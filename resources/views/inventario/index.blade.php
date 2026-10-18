@@ -117,12 +117,12 @@
                                 <td class="text-center">
                                     <div class="btn-group" role="group">
                                         <button class="btn btn-sm btn-warning btn-action" 
-                                                onclick="abrirModalEditar({{ $insumo->id }}, '{{ $insumo->codigo }}', '{{ $insumo->nombre }}', '{{ $insumo->descripcion ?? '' }}', '{{ $insumo->unidad_medida }}', {{ $insumo->costo_unitario }}, {{ $insumo->stock_actual }}, {{ $insumo->stock_minimo }}, {{ $insumo->activo ? 'true' : 'false' }})"
+                                                onclick="abrirModalEditar({{ $insumo->id }}, @js($insumo->codigo), @js($insumo->nombre), @js($insumo->descripcion ?? ''), @js($insumo->unidad_medida), {{ (float) $insumo->costo_unitario }}, {{ (float) $insumo->stock_actual }}, {{ (float) $insumo->stock_minimo }}, {{ $insumo->activo ? 'true' : 'false' }})"
                                                 title="Editar Insumo">
                                             <i class="bi bi-pencil"></i>
                                         </button>
                                         <button class="btn btn-sm btn-danger btn-action" 
-                                                onclick="eliminarInsumo({{ $insumo->id }}, '{{ $insumo->nombre }}')"
+                                                onclick="eliminarInsumo({{ $insumo->id }}, @js($insumo->nombre))"
                                                 title="Eliminar Insumo">
                                             <i class="bi bi-trash"></i>
                                         </button>

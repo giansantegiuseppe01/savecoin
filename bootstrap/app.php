@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AdminOnly;
 use App\Http\Middleware\AdminOrEmpleado;
+use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -19,6 +20,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => AdminOnly::class,
             'pos' => AdminOrEmpleado::class,
         ]);
+
+        // Cabeceras de seguridad (nosniff, anti-clickjacking, HSTS sobre HTTPS...)
+        $middleware->append(SecurityHeaders::class);
+
+        // Rate limiting general para toda la API (limiter "api" en AppServiceProvider)
+        $middleware->throttleApi();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

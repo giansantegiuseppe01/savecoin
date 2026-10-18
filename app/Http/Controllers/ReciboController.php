@@ -36,7 +36,7 @@ class ReciboController extends Controller
 
         // KPIs
         $totalRecibos = Orden::count();
-        $ventasActivas = Orden::where('tipo', 'venta')->where('estado', 'completada')->count();
+        $ventasActivas = Orden::where('tipo', 'venta')->where('estado', 'cerrada')->count();
         $reembolsos = Orden::where('tipo', 'reembolso')->count();
 
         return view('recibos.index', compact(
@@ -97,15 +97,20 @@ class ReciboController extends Controller
         try {
             DB::beginTransaction();
 
-            $orden = Orden::with('detalles.producto')->findOrFail($id);
+            // lockForUpdate evita que dos peticiones simultáneas repongan el stock dos veces
+            $orden = Orden::with('detalles.producto')->lockForUpdate()->findOrFail($id);
 
             // Verificar que no esté ya anulada
             if ($orden->estado === 'anulada') {
+                DB::rollBack();
+
                 return redirect()->back()->with('error', 'Este recibo ya está anulado.');
             }
 
             // Verificar que sea una venta (no un reembolso)
             if ($orden->tipo !== 'venta') {
+                DB::rollBack();
+
                 return redirect()->back()->with('error', 'Solo se pueden anular recibos de venta.');
             }
 
@@ -152,9 +157,10 @@ class ReciboController extends Controller
             return redirect()->back()->with('success', 'Recibo anulado correctamente. Stock revertido y bitácora actualizada.');
 
         } catch (\Exception $e) {
+            report($e);
             DB::rollBack();
 
-            return redirect()->back()->with('error', 'Error al anular recibo: '.$e->getMessage());
+            return redirect()->back()->with('error', 'Error al anular recibo.');
         }
     }
 
@@ -163,7 +169,21 @@ class ReciboController extends Controller
         try {
             DB::beginTransaction();
 
-            $ordenOriginal = Orden::with('detalles.producto')->findOrFail($id);
+            $ordenOriginal = Orden::with('detalles.producto')->lockForUpdate()->findOrFail($id);
+
+            // Un recibo solo puede reembolsarse una vez y solo si es una venta:
+            // sin esta guarda se podía reembolsar N veces (devolviendo stock y dinero de más).
+            if ($ordenOriginal->tipo !== 'venta') {
+                DB::rollBack();
+
+                return redirect()->back()->with('error', 'Solo se pueden reembolsar recibos de venta.');
+            }
+
+            if ($ordenOriginal->estado === 'anulada') {
+                DB::rollBack();
+
+                return redirect()->back()->with('error', 'Este recibo ya fue anulado o reembolsado.');
+            }
 
             // Obtener tasa de cambio
             $tasaCambio = Configuracion::getTasaCambio();
@@ -242,9 +262,10 @@ class ReciboController extends Controller
             return redirect()->back()->with('success', 'Reembolso creado correctamente. Stock revertido.');
 
         } catch (\Exception $e) {
+            report($e);
             DB::rollBack();
 
-            return redirect()->back()->with('error', 'Error al crear reembolso: '.$e->getMessage());
+            return redirect()->back()->with('error', 'Error al crear reembolso.');
         }
     }
 

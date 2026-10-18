@@ -6,11 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
+    /**
+     * Crear una cuenta nueva. La ruta está protegida con auth:sanctum + admin,
+     * por lo que solo un administrador puede elegir el rol de la cuenta.
+     */
     public function register(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -29,11 +33,8 @@ class AuthController extends Controller
             'rol' => $validated['rol'],
         ]);
 
-        $token = $user->createToken('mobile-app-token')->plainTextToken;
-
         return response()->json([
             'user' => $user,
-            'token' => $token,
         ], 201);
     }
 
@@ -44,16 +45,21 @@ class AuthController extends Controller
             'password' => 'required|string',
         ]);
 
-        if (! Auth::attempt($validated)) {
+        $user = User::where('email', $validated['email'])->first();
+
+        // Hash::check se ejecuta siempre (aun sin usuario, contra un hash falso)
+        // para no revelar por tiempo de respuesta si el correo existe.
+        $hash = $user?->password ?? '$2y$12$lERZgbdkOOTJuQ/S8BY25uv7Z7hqO1UrzRHQKeOioFNMeqVhg2eJe';
+        $passwordOk = Hash::check($validated['password'], $hash);
+
+        if (! $user || ! $passwordOk) {
             return response()->json([
                 'success' => false,
                 'message' => 'Credenciales inválidas',
             ], 401);
         }
 
-        $user = Auth::user();
-
-        // Usar Sanctum para generar un token válido
+        // Token de API con Sanctum (sin tocar la sesión web)
         $token = $user->createToken('mobile-app-token')->plainTextToken;
 
         return response()->json([
@@ -72,7 +78,12 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
-        Auth::logout();
+        // Revoca únicamente el token con el que se hizo esta petición.
+        $token = $request->user()?->currentAccessToken();
+
+        if ($token instanceof PersonalAccessToken) {
+            $token->delete();
+        }
 
         return response()->json([
             'success' => true,

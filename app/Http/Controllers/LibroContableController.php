@@ -8,6 +8,7 @@ use App\Services\ReciboPdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class LibroContableController extends Controller
 {
@@ -145,12 +146,21 @@ class LibroContableController extends Controller
                 'saldo_actual' => $this->calcularSaldoActual(),
             ]);
 
-        } catch (\Exception $e) {
+        } catch (ValidationException $e) {
             DB::rollBack();
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error al registrar movimiento: '.$e->getMessage(),
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            report($e);
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al registrar movimiento.',
             ], 500);
         }
     }
@@ -175,11 +185,12 @@ class LibroContableController extends Controller
                 'saldo_actual' => $this->calcularSaldoActual(),
             ]);
         } catch (\Exception $e) {
+            report($e);
             DB::rollBack();
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error al eliminar movimiento: '.$e->getMessage(),
+                'message' => 'Error al eliminar movimiento.',
             ], 500);
         }
     }

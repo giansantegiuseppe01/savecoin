@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Symfony\Component\Process\Process;
 use ZipArchive;
 
 #[Signature('backup:database')]
@@ -13,38 +14,46 @@ class BackupDatabase extends Command
 {
     public function handle(): int
     {
-        $dbHost = config('database.connections.pgsql.host');
-        $dbDatabase = config('database.connections.pgsql.database');
-        $dbUser = config('database.connections.pgsql.username');
-        $dbPassword = config('database.connections.pgsql.password');
+        $config = config('database.connections.pgsql');
 
         $timestamp = now()->format('Y-m-d_H-i-s');
         $backupDir = storage_path('backups');
         $backupSql = "{$backupDir}/{$timestamp}.sql";
         $backupZip = "{$backupDir}/{$timestamp}.zip";
 
-        // Crear directorio si no existe
+        // Crear directorio si no existe (solo accesible por el propietario)
         if (! file_exists($backupDir)) {
-            mkdir($backupDir, 0755, true);
+            mkdir($backupDir, 0700, true);
         }
 
         $this->info('Iniciando backup de base de datos...');
 
-        // Ejecutar pg_dump
-        $command = sprintf(
-            'PGPASSWORD=%s pg_dump -h %s -U %s %s > %s',
-            $dbPassword,
-            $dbHost,
-            $dbUser,
-            $dbDatabase,
-            $backupSql
+        // pg_dump se ejecuta SIN shell: los argumentos se pasan como arreglo (no hay
+        // inyección de comandos) y la contraseña va por variable de entorno, no en
+        // la línea de comandos (donde cualquier usuario podría verla con `ps`).
+        $process = new Process(
+            [
+                'pg_dump',
+                '--host', (string) $config['host'],
+                '--port', (string) ($config['port'] ?? 5432),
+                '--username', (string) $config['username'],
+                '--file', $backupSql,
+                (string) $config['database'],
+            ],
+            null,
+            ['PGPASSWORD' => (string) $config['password']],
         );
+        $process->setTimeout(600);
+        $process->run();
 
-        exec($command, $output, $returnCode);
-
-        if ($returnCode !== 0) {
+        if (! $process->isSuccessful()) {
             $this->error('Error al ejecutar pg_dump');
-            $this->error('Código de retorno: '.$returnCode);
+            $this->error('Código de retorno: '.$process->getExitCode());
+            $this->error(trim($process->getErrorOutput()));
+
+            if (file_exists($backupSql)) {
+                unlink($backupSql);
+            }
 
             return 1;
         }
@@ -55,6 +64,7 @@ class BackupDatabase extends Command
         $zip = new ZipArchive;
         if ($zip->open($backupZip, ZipArchive::CREATE) !== true) {
             $this->error('Error al crear archivo ZIP');
+            unlink($backupSql);
 
             return 1;
         }
@@ -64,6 +74,7 @@ class BackupDatabase extends Command
 
         // Eliminar SQL original
         unlink($backupSql);
+        chmod($backupZip, 0600);
 
         $this->info("Backup comprimido: {$backupZip}");
 

@@ -86,6 +86,20 @@ class UsuarioController extends Controller
             'direccion' => 'nullable|string|max:255',
         ]);
 
+        // No permitir que el último administrador se quite a sí mismo el rol de admin
+        if ($validated['rol'] !== 'admin' && $usuario->isAdmin()
+            && User::where('rol', 'admin')->count() <= 1) {
+            $mensaje = 'No se puede quitar el rol al único administrador.';
+
+            if ($request->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $mensaje], 422);
+            }
+
+            return redirect()->back()->with('error', $mensaje);
+        }
+
+        $revocarTokens = ! empty($validated['password']) || $validated['rol'] !== $usuario->rol;
+
         // Solo actualizar contraseña si se proporciona una nueva
         if (empty($validated['password'])) {
             unset($validated['password']);
@@ -94,6 +108,10 @@ class UsuarioController extends Controller
         }
 
         $usuario->update($validated);
+
+        if ($revocarTokens) {
+            $usuario->tokens()->delete();
+        }
 
         // Return JSON for AJAX requests
         if ($request->expectsJson()) {
@@ -109,6 +127,19 @@ class UsuarioController extends Controller
     public function destroy($id)
     {
         $usuario = User::findOrFail($id);
+
+        // Un administrador no puede borrar su propia cuenta (evita quedarse sin acceso)
+        if ($usuario->id === auth()->id()) {
+            $mensaje = 'No puedes eliminar tu propia cuenta.';
+
+            if (request()->expectsJson()) {
+                return response()->json(['success' => false, 'message' => $mensaje], 422);
+            }
+
+            return redirect()->route('usuarios.index')->with('error', $mensaje);
+        }
+
+        $usuario->tokens()->delete();
         $usuario->delete();
 
         // Return JSON for AJAX requests

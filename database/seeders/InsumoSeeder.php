@@ -136,7 +136,7 @@ class InsumoSeeder extends Seeder
         ];
 
         foreach ($insumos as $insumo) {
-            Insumo::create($insumo);
+            Insumo::firstOrCreate(['codigo' => $insumo['codigo']], $insumo);
         }
 
         $this->command->info('Insumos de prueba creados exitosamente.');

@@ -8,6 +8,7 @@ use App\Services\ReciboPdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class InventarioController extends Controller
 {
@@ -16,8 +17,11 @@ class InventarioController extends Controller
         $query = Insumo::query();
 
         if ($request->input('buscar')) {
-            $query->where('nombre', 'like', '%'.$request->input('buscar').'%')
-                ->orWhere('codigo', 'like', '%'.$request->input('buscar').'%');
+            $buscar = $request->input('buscar');
+            $query->where(function ($q) use ($buscar) {
+                $q->where('nombre', 'like', '%'.$buscar.'%')
+                    ->orWhere('codigo', 'like', '%'.$buscar.'%');
+            });
         }
 
         if ($request->input('estado') === 'activo') {
@@ -53,8 +57,11 @@ class InventarioController extends Controller
         $query = Insumo::query();
 
         if ($request->input('buscar')) {
-            $query->where('nombre', 'like', '%'.$request->input('buscar').'%')
-                ->orWhere('codigo', 'like', '%'.$request->input('buscar').'%');
+            $buscar = $request->input('buscar');
+            $query->where(function ($q) use ($buscar) {
+                $q->where('nombre', 'like', '%'.$buscar.'%')
+                    ->orWhere('codigo', 'like', '%'.$buscar.'%');
+            });
         }
 
         if ($request->input('estado') === 'activo') {
@@ -110,10 +117,18 @@ class InventarioController extends Controller
                 'message' => 'Insumo creado exitosamente.',
             ]);
 
-        } catch (\Exception $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al crear insumo: '.$e->getMessage(),
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al crear insumo.',
             ], 500);
         }
     }
@@ -149,10 +164,18 @@ class InventarioController extends Controller
                 'message' => 'Insumo actualizado exitosamente.',
             ]);
 
-        } catch (\Exception $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al actualizar insumo: '.$e->getMessage(),
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar insumo.',
             ], 500);
         }
     }
@@ -178,9 +201,11 @@ class InventarioController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error al eliminar insumo: '.$e->getMessage(),
+                'message' => 'Error al eliminar insumo.',
             ], 500);
         }
     }
@@ -240,12 +265,21 @@ class InventarioController extends Controller
                 'stock_actual' => $insumo->stock_actual,
             ]);
 
-        } catch (\Exception $e) {
+        } catch (ValidationException $e) {
             DB::rollBack();
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error al actualizar stock: '.$e->getMessage(),
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            report($e);
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar stock.',
             ], 500);
         }
     }

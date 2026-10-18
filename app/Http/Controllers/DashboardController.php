@@ -158,10 +158,14 @@ class DashboardController extends Controller
     public function getColaboradores()
     {
         $colaboradores = DB::table('users')
-            ->where('rol', 'empleado')
-            ->orWhere('rol', 'admin')
-            ->select('id', 'name')
-            ->get();
+            ->whereIn('rol', ['empleado', 'admin'])
+            ->select('id', 'nombre', 'apellido')
+            ->orderBy('nombre')
+            ->get()
+            ->map(fn ($u) => [
+                'id' => $u->id,
+                'name' => trim($u->nombre.' '.$u->apellido),
+            ]);
 
         return response()->json($colaboradores);
     }

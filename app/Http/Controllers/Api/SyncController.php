@@ -17,7 +17,7 @@ class SyncController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'ordenes' => 'required|array',
+                'ordenes' => 'required|array|max:200',
                 'ordenes.*.id' => 'required|string',
                 'ordenes.*.numero_recibo' => 'required|string',
                 'ordenes.*.cliente_id' => 'nullable|string',
@@ -33,6 +33,10 @@ class SyncController extends Controller
                 'ordenes.*.metodo_pago' => 'nullable|in:efectivo,tarjeta,transferencia,mixto',
                 'ordenes.*.fecha_hora' => 'required|date',
                 'ordenes.*.detalles' => 'required|array',
+                'ordenes.*.detalles.*.producto_nombre' => 'required|string|max:255',
+                'ordenes.*.detalles.*.precio_unitario' => 'required|numeric',
+                'ordenes.*.detalles.*.cantidad' => 'required|numeric',
+                'ordenes.*.detalles.*.subtotal' => 'required|numeric',
             ]);
 
             if ($validator->fails()) {
@@ -52,8 +56,10 @@ class SyncController extends Controller
                 if (! $ordenExistente) {
                     // Crear o buscar cliente si es local
                     $clienteId = null;
-                    if (! empty($ordenData['cliente_id']) && $ordenData['is_local'] ?? false) {
-                        $cliente = Cliente::where('cedula', $ordenData['cliente_nombre'])->first();
+                    // Ojo con la precedencia: sin paréntesis, "&& ... ?? false" lanzaba
+                    // "Undefined array key" cuando la app no enviaba is_local.
+                    if (! empty($ordenData['cliente_id']) && ($ordenData['is_local'] ?? false)) {
+                        $cliente = Cliente::where('cedula', $ordenData['cliente_id'])->first();
                         if (! $cliente) {
                             $cliente = Cliente::create([
                                 'nombre' => explode(' ', $ordenData['cliente_nombre'])[0] ?? 'Cliente',
@@ -71,7 +77,7 @@ class SyncController extends Controller
                     $orden = Orden::create([
                         'id' => $ordenData['id'], // UUID desde la app móvil
                         'numero_recibo' => $ordenData['numero_recibo'],
-                        'user_id' => auth()->id() ?? 1, // Usuario por defecto si no hay auth
+                        'user_id' => auth()->id(), // La ruta exige autenticación (auth:sanctum)
                         'cliente_id' => $clienteId,
                         'cliente_nombre' => $ordenData['cliente_nombre'],
                         'tipo' => $ordenData['tipo'],
@@ -119,11 +125,12 @@ class SyncController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            report($e);
             DB::rollBack();
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error al sincronizar órdenes: '.$e->getMessage(),
+                'message' => 'Error al sincronizar órdenes.',
             ], 500);
         }
     }

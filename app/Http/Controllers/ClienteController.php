@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Cliente;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class ClienteController extends Controller
 {
@@ -55,10 +56,18 @@ class ClienteController extends Controller
                 'message' => 'Cliente creado exitosamente.',
             ]);
 
-        } catch (\Exception $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al crear cliente: '.$e->getMessage(),
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al crear cliente.',
             ], 500);
         }
     }
@@ -83,10 +92,18 @@ class ClienteController extends Controller
                 'message' => 'Cliente actualizado exitosamente.',
             ]);
 
-        } catch (\Exception $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al actualizar cliente: '.$e->getMessage(),
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar cliente.',
             ], 500);
         }
     }
@@ -111,9 +128,11 @@ class ClienteController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error al eliminar cliente: '.$e->getMessage(),
+                'message' => 'Error al eliminar cliente.',
             ], 500);
         }
     }

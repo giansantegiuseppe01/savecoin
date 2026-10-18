@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class TransactionController extends Controller
 {
@@ -26,7 +27,7 @@ class TransactionController extends Controller
     {
         $validated = $request->validate([
             'wallet_id' => 'required|exists:wallets,id',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => ['nullable', Rule::exists('categories', 'id')->where('user_id', Auth::id())],
             'description' => 'required|string|max:255',
             'amount' => 'required|numeric',
             'type' => 'required|in:income,expense,transfer',
@@ -79,7 +80,7 @@ class TransactionController extends Controller
         }
 
         $validated = $request->validate([
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => ['nullable', Rule::exists('categories', 'id')->where('user_id', Auth::id())],
             'description' => 'sometimes|string|max:255',
             'amount' => 'sometimes|numeric',
             'type' => 'sometimes|in:income,expense,transfer',

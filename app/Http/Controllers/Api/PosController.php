@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class PosController extends Controller
 {
@@ -186,20 +187,31 @@ class PosController extends Controller
 
             return response()->json($responseData, 201);
 
+        } catch (ValidationException $e) {
+            DB::rollBack();
+
+            throw $e;
         } catch (\Exception $e) {
+            report($e);
             DB::rollBack();
 
             return response()->json([
-                'message' => 'Error al crear orden: '.$e->getMessage(),
+                'message' => 'Error al crear orden.',
             ], 500);
         }
     }
 
     public function index(): JsonResponse
     {
-        $ordens = Orden::with(['user', 'cliente', 'detalles.producto'])
-            ->orderBy('id', 'desc')
-            ->get();
+        $query = Orden::with(['user', 'cliente', 'detalles.producto'])
+            ->orderBy('id', 'desc');
+
+        // Los empleados solo ven sus propias órdenes; el admin ve todas.
+        if (! Auth::user()->isAdmin()) {
+            $query->where('user_id', Auth::id());
+        }
+
+        $ordens = $query->get();
 
         return response()->json([
             'data' => $ordens,
@@ -210,6 +222,10 @@ class PosController extends Controller
     {
         $orden = Orden::with(['user', 'cliente', 'detalles.producto'])->findOrFail($id);
 
+        if (! $this->puedeAccederOrden($orden)) {
+            return response()->json(['message' => 'No autorizado para ver esta orden.'], 403);
+        }
+
         return response()->json([
             'data' => $orden,
         ]);
@@ -219,7 +235,6 @@ class PosController extends Controller
     {
         try {
             Log::info('updateOrden llamado', ['id' => $id, 'user_id' => Auth::id()]);
-            Log::info('Payload recibido', $request->all());
 
             DB::beginTransaction();
 
@@ -240,6 +255,15 @@ class PosController extends Controller
                 $orden->is_local = true;
             } else {
                 Log::info('Orden encontrada', ['orden_id' => $orden->id, 'estado' => $orden->estado]);
+
+                // Un empleado no puede modificar órdenes de otro empleado.
+                if (! $this->puedeAccederOrden($orden)) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'message' => 'No autorizado para modificar esta orden.',
+                    ], 403);
+                }
             }
 
             // Si la orden ya está en el servidor y está cerrada, no permitir actualización
@@ -400,13 +424,28 @@ class PosController extends Controller
 
             return response()->json($responseData, 200);
 
+        } catch (ValidationException $e) {
+            DB::rollBack();
+
+            throw $e;
         } catch (\Exception $e) {
+            report($e);
             DB::rollBack();
 
             return response()->json([
-                'message' => 'Error al actualizar orden: '.$e->getMessage(),
+                'message' => 'Error al actualizar orden.',
             ], 500);
         }
+    }
+
+    /**
+     * El admin accede a todas las órdenes; un empleado solo a las suyas.
+     */
+    private function puedeAccederOrden(Orden $orden): bool
+    {
+        $user = Auth::user();
+
+        return $user->isAdmin() || (int) $orden->user_id === (int) $user->id;
     }
 
     private function generarNumeroRecibo(): string
