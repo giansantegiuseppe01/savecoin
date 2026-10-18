@@ -165,6 +165,27 @@ class TicketPreviewModal extends StatelessWidget {
           _buildInfoRow('Cliente:', orden.clienteNombre),
           _buildInfoRow('Fecha:', _formatDate(orden.fechaHora)),
           
+          // Agregar notas del cliente si existen
+          if (orden.notas != null && orden.notas!.isNotEmpty) ...[
+            const Divider(thickness: 1),
+            const SizedBox(height: 8),
+            const Text('NOTAS DEL CLIENTE:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.yellow[50],
+                border: Border.all(color: Colors.yellow[700]!),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                orden.notas!,
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          
           const Divider(thickness: 1),
           const SizedBox(height: 8),
           

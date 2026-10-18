@@ -16,9 +16,14 @@ class ApiService {
 
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    // Usa la IP real de tu máquina en la red local en lugar de localhost
-    _baseUrl = prefs.getString('api_url') ?? 'http://localhost:8000/api';
+    // Usa 127.0.0.1 en lugar de localhost para Flutter Web
+    _baseUrl = prefs.getString('api_url') ?? 'http://127.0.0.1:8000/api';
     _token = prefs.getString('auth_token'); // Usar auth_token en lugar de api_token
+  }
+
+  // Método público para recargar configuración
+  Future<void> reloadConfig() async {
+    await _loadConfig();
   }
 
   String get baseUrl => _baseUrl;

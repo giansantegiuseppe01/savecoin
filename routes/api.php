@@ -83,7 +83,7 @@ Route::middleware(['auth:sanctum', 'pos'])->group(function () {
             'update' => 'api.clientes.update',
         ]);
 
-    Route::post('/pos/ordenes', [PosController::class, 'store']);
+    Route::post('/pos/ordenes', [PosController::class, 'crearOrden']);
     Route::get('/pos/ordenes', [PosController::class, 'index']);
     Route::put('/pos/ordenes/{id}', [PosController::class, 'updateOrden']);
     Route::get('/pos/ordenes/{id}', [PosController::class, 'getOrden']);

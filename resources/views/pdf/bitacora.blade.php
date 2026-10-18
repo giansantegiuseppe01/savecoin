@@ -3,56 +3,9 @@
 <head>
     <meta charset="utf-8">
     <title>Bitácora de Inventario</title>
+    <link rel="stylesheet" href="{{ asset('css/reportes-pdf.css') }}">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            font-size: 12px;
-            line-height: 1.4;
-        }
-        .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #333;
-        }
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        .header-logo {
-            max-height: 80px;
-            max-width: 80px;
-        }
-        .header-right {
-            text-align: center;
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-            font-weight: bold;
-        }
-        .header h2 {
-            margin: 0;
-            font-size: 16px;
-            color: #666;
-            font-style: italic;
-        }
-        .header-info {
-            margin-top: 10px;
-            font-size: 11px;
-            color: #666;
-        }
-        .header-info div {
-            margin: 2px 0;
-        }
         .report-title {
-            margin-bottom: 20px;
-            font-size: 18px;
-            font-weight: bold;
-            color: #333;
             text-align: center;
         }
         .filtros {
@@ -82,29 +35,13 @@
             font-weight: bold;
         }
         .bitacora-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
             font-size: 10px;
         }
-        .bitacora-table th,
-        .bitacora-table td {
-            border: 1px solid #333;
-            padding: 6px;
-            text-align: left;
+        .tipo-entrada {
+            background-color: #d4edda;
         }
-        .bitacora-table th {
-            background-color: #f0f0f0;
-            font-weight: bold;
-        }
-        .bitacora-table td.number {
-            text-align: right;
-        }
-        .footer {
-            margin-top: 30px;
-            text-align: center;
-            font-size: 10px;
-            color: #666;
+        .tipo-salida {
+            background-color: #f8d7da;
         }
     </style>
 </head>
@@ -157,7 +94,7 @@
     </div>
 
     <h3>Movimientos ({{ $movimientos->count() }} registros)</h3>
-    <table class="bitacora-table">
+    <table class="table bitacora-table">
         <thead>
             <tr>
                 <th>Fecha/Hora</th>

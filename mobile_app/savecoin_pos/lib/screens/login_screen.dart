@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
-import '../providers/config_provider.dart';
+import '../services/api_service.dart';
 import 'initial_screen.dart';
-import 'config_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,7 +16,76 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _apiUrlController = TextEditingController();
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadApiUrl();
+  }
+
+  Future<void> _loadApiUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _apiUrlController.text = prefs.getString('api_url') ?? 'http://127.0.0.1:8000/api';
+    });
+  }
+
+  Future<void> _saveApiUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('api_url', _apiUrlController.text);
+    
+    // Recargar configuración en el ApiService
+    final apiService = Provider.of<ApiService>(context, listen: false);
+    await apiService.reloadConfig();
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('URL guardada correctamente')),
+      );
+    }
+  }
+
+  void _showConfigModal() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Configuración del Servidor'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _apiUrlController,
+              decoration: const InputDecoration(
+                labelText: 'URL del Servidor',
+                border: OutlineInputBorder(),
+                hintText: 'http://127.0.0.1:8000/api',
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Ejemplo: http://192.168.1.100:8000/api',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              _saveApiUrl();
+              Navigator.pop(context);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -109,11 +178,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => const ConfigScreen()),
-                            );
-                          },
+                          onPressed: _showConfigModal,
                           icon: const Icon(Icons.settings, size: 20),
                           label: const Text('Configuración'),
                           style: TextButton.styleFrom(

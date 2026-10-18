@@ -38,8 +38,8 @@ class PosController extends Controller
                 'cliente_id' => 'nullable|exists:clientes,id',
                 'cliente_nombre' => 'nullable|string|max:255',
                 'estado' => 'nullable|in:abierta,cerrada,anulada',
-                'metodo_pago' => 'required|in:efectivo,tarjeta,transferencia,mixto',
-                'turno' => 'required|string|in:mañana,tarde,noche',
+                'metodo_pago' => 'nullable|in:efectivo,tarjeta,transferencia,mixto', // Cambiado a nullable
+                'turno' => 'nullable|string|in:mañana,tarde,noche', // Cambiado a nullable
                 'descuento' => 'nullable|numeric|min:0',
                 'impuesto' => 'nullable|numeric|min:0',
                 'aplica_iva' => 'nullable|boolean',
@@ -52,22 +52,21 @@ class PosController extends Controller
                 'detalles.*.descuento' => 'nullable|numeric|min:0',
             ]);
 
-            // Verificar turno activo solo si la orden se está cerrando
-            $turnoActivo = null;
-            $estado = $validated['estado'] ?? 'cerrada';
-            if ($estado === 'cerrada') {
-                $turnoActivo = Turno::where('user_id', Auth::id())
-                    ->where('estado', 'abierto')
-                    ->first();
+            // Verificar turno activo (se requiere tanto para abrir como cerrar)
+            $turnoActivo = Turno::where('user_id', Auth::id())
+                ->where('estado', 'abierto')
+                ->first();
 
-                if (! $turnoActivo) {
-                    DB::rollBack();
+            if (! $turnoActivo) {
+                DB::rollBack();
 
-                    return response()->json([
-                        'message' => 'No tienes un turno abierto. Debes abrir un turno antes de cerrar órdenes.',
-                    ], 400);
-                }
+                return response()->json([
+                    'message' => 'No tienes un turno abierto. Debes abrir un turno antes de crear órdenes.',
+                ], 400);
             }
+
+            // Obtener estado de la orden
+            $estado = $validated['estado'] ?? 'abierta';
 
             // Calcular totales
             $subtotal = 0;
@@ -123,10 +122,11 @@ class PosController extends Controller
             // Obtener tasa de cambio
             $tasaCambio = Configuracion::getTasaCambio();
 
-            // Crear orden (sin numero_recibo, se generará después del ID)
+            // Crear orden (con numero_recibo temporal, se actualizará después)
             $orden = Orden::create([
+                'numero_recibo' => 'TEMP-'.time(), // Valor temporal hasta que se genere el ID
                 'user_id' => Auth::id(),
-                'turno_id' => $turnoActivo?->id,
+                'turno_id' => $turnoActivo->id, // Asignar turno activo
                 'cliente_id' => $validated['cliente_id'] ?? null,
                 'cliente_nombre' => $validated['cliente_nombre'] ?? null,
                 'tipo' => 'venta',
@@ -139,8 +139,8 @@ class PosController extends Controller
                 'costo_insumos' => $costoInsumosTotal,
                 'beneficio_bruto' => $beneficioBruto,
                 'estado' => $estado,
-                'metodo_pago' => $validated['metodo_pago'],
-                'turno' => $validated['turno'],
+                'metodo_pago' => $validated['metodo_pago'] ?? null, // Solo asignar si se proporciona
+                'turno' => null, // No usar este campo, usar turno_id
                 'fecha_hora' => now(),
                 'notas' => $validated['notas'] ?? null,
                 'synced_at' => now(),
@@ -158,20 +158,22 @@ class PosController extends Controller
                     ->update(['orden_id' => $orden->id]);
             }
 
-            // Crear detalles
-            foreach ($validated['detalles'] as $detalle) {
-                DetalleOrden::create([
-                    'orden_id' => $orden->id,
-                    'producto_id' => $detalle['producto_id'],
-                    'producto_nombre' => Producto::findOrFail($detalle['producto_id'])->nombre,
-                    'cantidad' => $detalle['cantidad'],
-                    'precio_unitario' => $detalle['precio_unitario'],
-                    'subtotal' => $detalle['precio_unitario'] * $detalle['cantidad'],
-                    'descuento' => $detalle['descuento'] ?? 0,
-                    'total' => ($detalle['precio_unitario'] * $detalle['cantidad']) - ($detalle['descuento'] ?? 0),
-                    'synced_at' => now(),
-                    'is_local' => false,
-                ]);
+            // Crear detalles solo si existen
+            if (! empty($validated['detalles'])) {
+                foreach ($validated['detalles'] as $detalle) {
+                    DetalleOrden::create([
+                        'orden_id' => $orden->id,
+                        'producto_id' => $detalle['producto_id'],
+                        'producto_nombre' => Producto::findOrFail($detalle['producto_id'])->nombre,
+                        'cantidad' => $detalle['cantidad'],
+                        'precio_unitario' => $detalle['precio_unitario'],
+                        'subtotal' => $detalle['precio_unitario'] * $detalle['cantidad'],
+                        'descuento' => $detalle['descuento'] ?? 0,
+                        'total' => ($detalle['precio_unitario'] * $detalle['cantidad']) - ($detalle['descuento'] ?? 0),
+                        'synced_at' => now(),
+                        'is_local' => false,
+                    ]);
+                }
             }
 
             DB::commit();
@@ -392,8 +394,12 @@ class PosController extends Controller
                 $orden->save();
             }
 
-            // Crear detalles de orden después de guardar la orden (para tener el orden_id)
-            if ($validated['estado'] === 'cerrada' && isset($validated['detalles'])) {
+            // Crear o actualizar detalles de orden (para órdenes abiertas y cerradas)
+            if (isset($validated['detalles'])) {
+                // Eliminar detalles anteriores de esta orden
+                DetalleOrden::where('orden_id', $orden->id)->delete();
+
+                // Crear nuevos detalles
                 foreach ($validated['detalles'] as $detalleData) {
                     DetalleOrden::create([
                         'orden_id' => $orden->id,

@@ -314,6 +314,7 @@ class _POSScreenState extends State<POSScreen> {
                 },
                 onClearCart: () {
                   cartProvider.clear();
+                  orderProvider.clearCliente();
                 },
                 onRemoveItem: (productoId) {
                   cartProvider.removeItem(productoId);
@@ -422,6 +423,7 @@ class _POSScreenState extends State<POSScreen> {
                   try {
                     await orderProvider.sendToKitchen();
                     cartProvider.clear();
+                    orderProvider.clearCliente();
 
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -444,11 +446,14 @@ class _POSScreenState extends State<POSScreen> {
                         tasaCambio: context.read<ConfigProvider>().config?.tasaCambio ?? 36.5,
                       );
                       
-                      // Mark as printed
+                      // Marcar como impresión
                       for (var detalle in detalles) {
                         final updated = detalle.copyWith(isNew: false);
                         await detallesBox.put(detalle.id, updated);
                       }
+                      
+                      // Limpiar notas del cliente después de imprimir
+                      await orderProvider.clearOrdenNotas();
                       
                       cartProvider.clear();
                     }

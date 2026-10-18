@@ -176,6 +176,17 @@ class BluetoothService {
           styles: PosStyles(bold: true));
       bytes += generator.text('Cliente: ${orden.clienteNombre}');
       bytes += generator.text('Fecha: ${_formatDate(orden.fechaHora)}');
+      
+      // Agregar notas del cliente si existen
+      if (orden.notas != null && orden.notas!.isNotEmpty) {
+        bytes += generator.hr();
+        bytes += generator.text('NOTAS DEL CLIENTE:',
+            styles: PosStyles(bold: true));
+        bytes += generator.text(orden.notas!,
+            styles: PosStyles(align: PosAlign.left));
+        bytes += generator.hr();
+      }
+      
       bytes += generator.hr();
       bytes += generator.text('ITEMS:',
           styles: PosStyles(bold: true));
@@ -280,9 +291,9 @@ class BluetoothService {
   }
 
   // PASO 5B: Imprimir ticket de productos añadidos
-  Future<void> printProductosAñadidos(Orden orden, List<DetalleOrden> detalles) async {
+  Future<void> printProductosAnadidos(Orden orden, List<DetalleOrden> detalles) async {
     if (isWeb) {
-      throw Exception('WEB_SIMULATION:productos_añadidos');
+      throw Exception('WEB_SIMULATION:productos_anadidos');
     }
 
     if (!isConnected || _printCharacteristic == null) {

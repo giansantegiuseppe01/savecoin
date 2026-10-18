@@ -4,6 +4,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/orden.dart';
 import '../models/detalle_orden.dart';
 import '../models/cliente.dart';
+import '../models/configuracion.dart';
 import '../services/api_service.dart';
 import '../services/sync_service.dart';
 import '../services/bluetooth_service.dart';
@@ -34,6 +35,14 @@ class OrderProvider with ChangeNotifier {
   SyncService get syncService => _syncService;
   ComandaChange? get ultimoCambioDetectado => _ultimoCambioDetectado;
 
+  // Helper para parsear números que pueden venir como String o num
+  double _parseNum(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
   Future<void> loadOrdenesAbiertas() async {
     _isLoading = true;
     _error = null;
@@ -44,12 +53,46 @@ class OrderProvider with ChangeNotifier {
       if (await _syncService.hasConnection) {
         try {
           final response = await _apiService.getOrdenes();
-          final ordenes = (response['data'] as List)
-              .map((json) => Orden.fromJson(json))
-              .where((o) => o.estado == 'abierta')
-              .toList();
+          final ordenesData = response['data'] as List;
           
-          _ordenesAbiertas = ordenes;
+          final ordenes = <Orden>[];
+          final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
+          
+          for (var ordenJson in ordenesData) {
+            // Procesar detalles de esta orden
+            final detallesBackend = ordenJson['detalles'] as List<dynamic>? ?? [];
+            for (var detalleJson in detallesBackend) {
+              final detalle = DetalleOrden(
+                id: detalleJson['id'].toString(),
+                ordenId: ordenJson['id'].toString(),
+                productoId: detalleJson['producto_id'].toString(),
+                productoNombre: detalleJson['producto_nombre'] as String? ?? '',
+                cantidad: _parseNum(detalleJson['cantidad']),
+                precioUnitario: _parseNum(detalleJson['precio_unitario']),
+                isNew: false,
+              );
+              detallesBox.put(detalle.id, detalle);
+            }
+            
+            // Crear orden con detalleIds correctos
+            final orden = Orden.fromJson(ordenJson);
+            final detalleIds = detallesBackend.map((d) => d['id'].toString()).toList();
+            
+            // Recalcular totales basados en los detalles
+            double subtotal = 0;
+            for (var detalleJson in detallesBackend) {
+              subtotal += _parseNum(detalleJson['subtotal']);
+            }
+            
+            final ordenConDetalles = orden.copyWith(
+              detalleIds: detalleIds,
+              subtotal: subtotal,
+              total: _parseNum(ordenJson['total']) > 0 ? _parseNum(ordenJson['total']) : subtotal,
+            );
+            ordenes.add(ordenConDetalles);
+          }
+          
+          _ordenesAbiertas = ordenes.where((o) => o.estado == 'abierta').toList();
           
           // Actualizar Hive con las órdenes del backend
           final ordenesBox = Hive.box<Orden>('ordenes');
@@ -93,12 +136,46 @@ class OrderProvider with ChangeNotifier {
       if (await _syncService.hasConnection) {
         try {
           final response = await _apiService.getOrdenes();
-          final ordenes = (response['data'] as List)
-              .map((json) => Orden.fromJson(json))
-              .where((o) => o.estado == 'cerrada')
-              .toList();
+          final ordenesData = response['data'] as List;
           
-          _ordenesCerradas = ordenes;
+          final ordenes = <Orden>[];
+          final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
+          
+          for (var ordenJson in ordenesData) {
+            // Procesar detalles de esta orden
+            final detallesBackend = ordenJson['detalles'] as List<dynamic>? ?? [];
+            for (var detalleJson in detallesBackend) {
+              final detalle = DetalleOrden(
+                id: detalleJson['id'].toString(),
+                ordenId: ordenJson['id'].toString(),
+                productoId: detalleJson['producto_id'].toString(),
+                productoNombre: detalleJson['producto_nombre'] as String? ?? '',
+                cantidad: _parseNum(detalleJson['cantidad']),
+                precioUnitario: _parseNum(detalleJson['precio_unitario']),
+                isNew: false,
+              );
+              detallesBox.put(detalle.id, detalle);
+            }
+            
+            // Crear orden con detalleIds correctos
+            final orden = Orden.fromJson(ordenJson);
+            final detalleIds = detallesBackend.map((d) => d['id'].toString()).toList();
+            
+            // Recalcular totales basados en los detalles
+            double subtotal = 0;
+            for (var detalleJson in detallesBackend) {
+              subtotal += _parseNum(detalleJson['subtotal']);
+            }
+            
+            final ordenConDetalles = orden.copyWith(
+              detalleIds: detalleIds,
+              subtotal: subtotal,
+              total: _parseNum(ordenJson['total']) > 0 ? _parseNum(ordenJson['total']) : subtotal,
+            );
+            ordenes.add(ordenConDetalles);
+          }
+          
+          _ordenesCerradas = ordenes.where((o) => o.estado == 'cerrada').toList();
           
           // Actualizar Hive con las órdenes del backend
           final ordenesBox = Hive.box<Orden>('ordenes');
@@ -225,9 +302,10 @@ class OrderProvider with ChangeNotifier {
         final detalleAnterior = mapaAnterior[nuevoDetalle.productoId];
         
         if (detalleAnterior == null) {
-          // INSERT: Nuevo producto en la comanda
-          await detallesBox.put(nuevoDetalle.id, nuevoDetalle);
-          detalleIdsNuevos.add(nuevoDetalle.id);
+          // INSERT: Nuevo producto en la comanda (marcar como nuevo para impresión)
+          final detalleNuevo = nuevoDetalle.copyWith(isNew: true);
+          await detallesBox.put(detalleNuevo.id, detalleNuevo);
+          detalleIdsNuevos.add(detalleNuevo.id);
         } else {
           // UPDATE: Producto existente con posible cambio de cantidad
           if (detalleAnterior.cantidad != nuevoDetalle.cantidad) {
@@ -284,7 +362,7 @@ class OrderProvider with ChangeNotifier {
         try {
           // Imprimir productos añadidos
           if (cambios.tieneAgregaciones) {
-            await _bluetoothService.printProductosAñadidos(
+            await _bluetoothService.printProductosAnadidos(
               _currentOrden!,
               cambios.detallesAgregados,
             );
@@ -328,6 +406,18 @@ class OrderProvider with ChangeNotifier {
         : '$notasExistentes - $notas';
 
     _currentOrden = _currentOrden!.copyWith(notas: nuevasNotas);
+    notifyListeners();
+  }
+
+  // PASO 4: Limpiar notas de la orden después de imprimir
+  Future<void> clearOrdenNotas() async {
+    if (_currentOrden == null) return;
+
+    _currentOrden = _currentOrden!.copyWith(notas: null);
+    
+    final ordenesBox = Hive.box<Orden>('ordenes');
+    await ordenesBox.put(_currentOrden!.id, _currentOrden!);
+    
     notifyListeners();
   }
 
@@ -444,6 +534,27 @@ class OrderProvider with ChangeNotifier {
           .where((d) => _currentOrden!.detalleIds.contains(d.id) && d.isNew)
           .toList();
 
+      // Sincronizar orden con el backend si hay conexión
+      if (await _syncService.hasConnection) {
+        try {
+          final detallesParaBackend = detalles.map((d) => {
+            'producto_id': int.parse(d.productoId),
+            'producto_nombre': d.productoNombre,
+            'precio_unitario': d.precioUnitario,
+            'cantidad': d.cantidad,
+          }).toList();
+
+          await _apiService.updateOrden(_currentOrden!.id, {
+            'estado': 'abierta',
+            'detalles': detallesParaBackend,
+            'subtotal': _currentOrden!.subtotal,
+            'total': _currentOrden!.total,
+          });
+        } catch (e) {
+          print('Error sincronizando orden con backend: $e');
+        }
+      }
+
       // Imprimir comanda de cocina
       await _bluetoothService.printKitchenCommand(_currentOrden!, detalles);
 
@@ -452,6 +563,11 @@ class OrderProvider with ChangeNotifier {
         final updated = detalle.copyWith(isNew: false);
         await detallesBox.put(detalle.id, updated);
       }
+
+      // Limpiar notas del cliente después de imprimir
+      _currentOrden = _currentOrden!.copyWith(notas: null);
+      final ordenesBox = Hive.box<Orden>('ordenes');
+      await ordenesBox.put(_currentOrden!.id, _currentOrden!);
 
       notifyListeners();
     } catch (e) {
@@ -534,7 +650,9 @@ class OrderProvider with ChangeNotifier {
           .where((d) => _currentOrden!.detalleIds.contains(d.id))
           .toList();
 
-      final config = await _loadConfig();
+      // Obtener configuración desde Hive
+      final configBox = Hive.box<Configuracion>('configuracion');
+      final config = configBox.get('config');
       final tasaCambio = config?.tasaCambio ?? 36.5;
 
       // CRITICAL FIX: En Web, no intentar imprimir realmente
@@ -725,6 +843,11 @@ class OrderProvider with ChangeNotifier {
 
   void selectCliente(Cliente? cliente) {
     _selectedCliente = cliente;
+    notifyListeners();
+  }
+
+  void clearCliente() {
+    _selectedCliente = null;
     notifyListeners();
   }
 

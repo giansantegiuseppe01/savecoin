@@ -29,6 +29,9 @@ class AuthProvider with ChangeNotifier {
 
   Future<bool> login(String email, String password) async {
     try {
+      // Recargar configuración de API antes de login
+      await _apiService.reloadConfig();
+
       // Always call the actual API for both web and mobile
       final response = await _apiService.login(email, password);
       if (response['success'] == true) {
