@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/producto.dart';
@@ -148,27 +149,31 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> updateOrden(String id, Orden orden) async {
+  Future<Map<String, dynamic>> updateOrden(String id, Map<String, dynamic> data) async {
     try {
       final url = '$_baseUrl/pos/ordenes/$id';
-      print('updateOrden llamada a: $url');
-      print('Payload: ${orden.toJson()}');
+      if (kDebugMode) {
+        print('updateOrden llamada a: $url');
+      }
 
       final response = await http.put(
         Uri.parse(url),
         headers: _headers,
-        body: json.encode(orden.toJson()),
+        body: json.encode(data),
       );
 
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
+      if (kDebugMode) {
+        print('updateOrden status: ${response.statusCode}');
+      }
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
       }
-      throw Exception('Error al actualizar orden');
+      throw Exception('Error al actualizar orden (${response.statusCode})');
     } catch (e) {
-      print('Error en updateOrden: $e');
+      if (kDebugMode) {
+        print('Error en updateOrden: $e');
+      }
       throw Exception('Error de conexión: $e');
     }
   }

@@ -482,7 +482,7 @@ class OrderProvider with ChangeNotifier {
       // Sincronizar con API si hay conexión
       if (await _syncService.hasConnection) {
         try {
-          final response = await _apiService.updateOrden(_currentOrden!.id, _currentOrden!);
+          final response = await _apiService.updateOrden(_currentOrden!.id, _currentOrden!.toJson());
           
           // Verificar si hay advertencias de stock
           if (response['advertencias'] != null && response['advertencias'] is List) {
@@ -690,7 +690,7 @@ class OrderProvider with ChangeNotifier {
       // Intentar sincronizar con API primero (Online First)
       if (await _syncService.hasConnection) {
         try {
-          final response = await _apiService.updateOrden(_currentOrden!.id, _currentOrden!);
+          final response = await _apiService.updateOrden(_currentOrden!.id, _currentOrden!.toJson());
 
           // Verificar si hay advertencias de stock (response es un Map)
           if (response['advertencias'] != null && response['advertencias'] is List) {
@@ -782,7 +782,7 @@ class OrderProvider with ChangeNotifier {
       // Intentar sincronizar con API primero (Online First)
       if (await _syncService.hasConnection) {
         try {
-          final response = await _apiService.updateOrden(_currentOrden!.id, _currentOrden!);
+          final response = await _apiService.updateOrden(_currentOrden!.id, _currentOrden!.toJson());
           
           // Verificar si hay advertencias de stock (response es un Map)
           if (response['advertencias'] != null && response['advertencias'] is List) {
