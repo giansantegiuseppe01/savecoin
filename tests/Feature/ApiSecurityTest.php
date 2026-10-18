@@ -167,7 +167,7 @@ class ApiSecurityTest extends TestCase
             ->deleteJson("/api/users/{$empleado->id}")
             ->assertOk();
 
-        $this->assertDatabaseMissing('users', ['id' => $empleado->id]);
+        $this->assertSoftDeleted('users', ['id' => $empleado->id]);
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
@@ -289,4 +289,24 @@ class ApiSecurityTest extends TestCase
             ->assertHeader('X-Frame-Options', 'SAMEORIGIN');
     }
 
+    public function test_deleting_employee_keeps_orders_and_shifts(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $empleado = User::factory()->create();
+
+        $turno = Turno::create([
+            'codigo' => 'T-DEL',
+            'user_id' => $empleado->id,
+            'usuario_nombre' => 'E',
+            'fecha' => now()->toDateString(),
+            'hora_apertura' => now(),
+            'estado' => 'abierto',
+            'monto_apertura' => 0,
+        ]);
+
+        $this->actingAs($admin, 'sanctum')->deleteJson("/api/users/{$empleado->id}")->assertOk();
+
+        $this->assertSoftDeleted('users', ['id' => $empleado->id]);
+        $this->assertDatabaseHas('turnos', ['id' => $turno->id]);
+    }
 }
