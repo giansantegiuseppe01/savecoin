@@ -164,13 +164,13 @@ class BluetoothService {
             height: PosTextSize.size2,
             width: PosTextSize.size2,
           ));
-      
+
       // Si está modificada, agregar timestamp de modificación
       if (tieneModificaciones) {
         bytes += generator.text('Modificación: ${_formatDate(DateTime.now())}',
             styles: PosStyles(align: PosAlign.center));
       }
-      
+
       bytes += generator.hr();
       bytes += generator.text('Orden: ${orden.numeroRecibo}',
           styles: PosStyles(bold: true));
@@ -275,6 +275,108 @@ class BluetoothService {
       await printer.printBytes(Uint8List.fromList(bytes));
     } catch (e) {
       print('Error imprimiendo pre-cuenta: $e');
+      throw Exception('Error al imprimir: $e');
+    }
+  }
+
+  // PASO 5B: Imprimir ticket de productos añadidos
+  Future<void> printProductosAñadidos(Orden orden, List<DetalleOrden> detalles) async {
+    if (isWeb) {
+      throw Exception('WEB_SIMULATION:productos_añadidos');
+    }
+
+    if (!isConnected || _printCharacteristic == null) {
+      throw Exception('Impresora no conectada');
+    }
+
+    try {
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm58, profile);
+      final printer = BluetoothPrinter(_printCharacteristic!);
+
+      List<int> bytes = [];
+
+      bytes += generator.text('PRODUCTOS AÑADIDOS',
+          styles: PosStyles(
+            align: PosAlign.center,
+            bold: true,
+            height: PosTextSize.size2,
+            width: PosTextSize.size2,
+          ));
+      bytes += generator.hr();
+      bytes += generator.text('Orden: ${orden.numeroRecibo}',
+          styles: PosStyles(bold: true));
+      bytes += generator.text('Cliente: ${orden.clienteNombre}');
+      bytes += generator.text('Fecha: ${_formatDate(DateTime.now())}');
+      bytes += generator.hr();
+
+      for (var detalle in detalles) {
+        bytes += generator.text('${detalle.productoNombre}');
+        bytes += generator.text(
+            '${detalle.cantidad} x \$${detalle.precioUnitario.toStringAsFixed(2)}',
+            styles: PosStyles(align: PosAlign.right));
+        if (detalle.notas != null && detalle.notas!.isNotEmpty) {
+          bytes += generator.text('Nota: ${detalle.notas}',
+              styles: PosStyles(align: PosAlign.left));
+        }
+      }
+
+      bytes += generator.hr();
+      bytes += generator.feed(2);
+      bytes += generator.cut();
+
+      await printer.printBytes(Uint8List.fromList(bytes));
+    } catch (e) {
+      print('Error imprimiendo productos añadidos: $e');
+      throw Exception('Error al imprimir: $e');
+    }
+  }
+
+  // PASO 5B: Imprimir ticket de productos eliminados
+  Future<void> printProductosEliminados(Orden orden, List<DetalleOrden> detalles) async {
+    if (isWeb) {
+      throw Exception('WEB_SIMULATION:productos_eliminados');
+    }
+
+    if (!isConnected || _printCharacteristic == null) {
+      throw Exception('Impresora no conectada');
+    }
+
+    try {
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm58, profile);
+      final printer = BluetoothPrinter(_printCharacteristic!);
+
+      List<int> bytes = [];
+
+      bytes += generator.text('PRODUCTOS ELIMINADOS',
+          styles: PosStyles(
+            align: PosAlign.center,
+            bold: true,
+            height: PosTextSize.size2,
+            width: PosTextSize.size2,
+          ));
+      bytes += generator.hr();
+      bytes += generator.text('Orden: ${orden.numeroRecibo}',
+          styles: PosStyles(bold: true));
+      bytes += generator.text('Cliente: ${orden.clienteNombre}');
+      bytes += generator.text('Fecha: ${_formatDate(DateTime.now())}');
+      bytes += generator.hr();
+
+      for (var detalle in detalles) {
+        bytes += generator.text('${detalle.productoNombre}');
+        bytes += generator.text(
+            '${detalle.cantidad} x \$${detalle.precioUnitario.toStringAsFixed(2)}',
+            styles: PosStyles(align: PosAlign.right));
+      }
+
+      bytes += generator.hr();
+      bytes += generator.feed(2);
+      bytes += generator.cut();
+
+      await printer.printBytes(Uint8List.fromList(bytes));
+    } catch (e) {
+      print('Error imprimiendo productos eliminados: $e');
       throw Exception('Error al imprimir: $e');
     }
   }

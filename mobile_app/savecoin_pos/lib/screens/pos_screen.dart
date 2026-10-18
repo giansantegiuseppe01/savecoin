@@ -327,6 +327,48 @@ class _POSScreenState extends State<POSScreen> {
                   }
                 },
                 onSendToKitchen: () async {
+                  // PASO 4: Validación de cliente
+                  if (orderProvider.selectedCliente == null) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Debe seleccionar un cliente antes de enviar la comanda'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                    return;
+                  }
+
+                  // PASO 4: Modal de descripción/exigencias del cliente
+                  String? notasCliente;
+                  if (mounted) {
+                    notasCliente = await showDialog<String>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Notas del Cliente'),
+                        content: TextField(
+                          decoration: const InputDecoration(
+                            hintText: 'Ej: Sin cebolla, Término medio, etc.',
+                            border: OutlineInputBorder(),
+                          ),
+                          maxLines: 3,
+                          onChanged: (value) => notasCliente = value,
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, ''),
+                            child: const Text('Omitir'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () => Navigator.pop(context, notasCliente),
+                            child: const Text('Aceptar'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
                   if (orderProvider.currentOrden == null) {
                     final config = context.read<ConfigProvider>().config;
                     if (config == null) return;
@@ -349,12 +391,38 @@ class _POSScreenState extends State<POSScreen> {
                     return;
                   }
 
+                  // Actualizar notas de la orden
+                  if (notasCliente != null && notasCliente!.isNotEmpty) {
+                    orderProvider.updateOrdenNotas(notasCliente!);
+                  }
+
                   await orderProvider.updateOrden(cartProvider.toDetallesOrden(orderProvider.currentOrden!.id));
-                  
+
+                  // PASO 4: Modal de previa antes de enviar
+                  final confirmar = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Confirmar Comanda'),
+                      content: const Text('¿Desea enviar esta comanda a cocina?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Modificar'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text('Confirmar'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirmar != true) return;
+
                   try {
                     await orderProvider.sendToKitchen();
                     cartProvider.clear();
-                    
+
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Comanda enviada a cocina')),
@@ -437,7 +505,7 @@ class _POSScreenState extends State<POSScreen> {
                     }
                   }
                 },
-                onCobrar: (metodoPago, aplicaIva) async {
+                onCobrar: (metodoPago, aplicaIva, {montoEntregado, referencia}) async {
                   final config = context.read<ConfigProvider>().config;
                   if (config == null) return;
 
@@ -465,6 +533,13 @@ class _POSScreenState extends State<POSScreen> {
                   }
 
                   await orderProvider.updateOrden(cartProvider.toDetallesOrden(orderProvider.currentOrden!.id));
+
+                  // PASO 6: Cerrar orden con información de pago
+                  await orderProvider.closeOrden(
+                    metodoPago: metodoPago,
+                    montoEntregado: montoEntregado,
+                    referencia: referencia,
+                  );
 
                   // Para Web, siempre usar el modo de simulación para mostrar el modal
                   if (kIsWeb) {

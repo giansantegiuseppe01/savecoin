@@ -120,14 +120,40 @@ class _OpenOrdersScreenState extends State<OpenOrdersScreen> {
             child: const Text('Cerrar'),
           ),
           ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              // PASO 5A: Reimprimir ticket completo
+              final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
+              final detalles = detallesBox.values
+                  .where((d) => orden.detalleIds.contains(d.id))
+                  .toList();
+
+              await TicketPreviewModal.show(
+                context: context,
+                orden: orden,
+                detalles: detalles,
+                tipoTicket: 'comanda',
+                tasaCambio: config.tasaCambio,
+              );
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Ticket reimprimido')),
+                );
+              }
+            },
+            icon: const Icon(Icons.print),
+            label: const Text('Reimprimir'),
+          ),
+          ElevatedButton.icon(
             onPressed: () {
               // CRITICAL FIX: Cerrar el diálogo primero, luego cargar y navegar
               Navigator.of(context).pop(); // Cerrar el diálogo de detalles
-              
+
               // Seleccionar la orden y cargar detalles
               orderProvider.selectOrden(orden);
               _cargarDetallesEnCarrito(orden);
-              
+
               // Navegar de vuelta al POS screen
               Navigator.of(context).pop(); // Cerrar la pantalla de órdenes abiertas
             },

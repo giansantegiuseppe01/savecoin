@@ -16,7 +16,7 @@ class CartPanel extends StatelessWidget {
   final Function(String, int) onUpdateCantidad;
   final VoidCallback onSendToKitchen;
   final VoidCallback onPrintPreCuenta;
-  final Function(String, bool) onCobrar; // Cambiado para aceptar aplicaIva
+  final Function(String, bool, {double? montoEntregado, String? referencia}) onCobrar; // PASO 6: Acepta monto entregado y referencia
   final bool isNewCommand; // Nueva propiedad para controlar visibilidad del botón Cobrar
 
   const CartPanel({
@@ -288,9 +288,16 @@ class CartPanel extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.money),
                   title: const Text('Efectivo'),
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(context);
-                    onCobrar('efectivo', aplicaIva);
+                    // PASO 6: Modal para efectivo con cálculo de vuelto
+                    final montoEntregado = await showDialog<double>(
+                      context: context,
+                      builder: (context) => _EfectivoModal(total: aplicaIva ? subtotal * (1 + tasaIva) : subtotal),
+                    );
+                    if (montoEntregado != null && context.mounted) {
+                      onCobrar('efectivo', aplicaIva, montoEntregado: montoEntregado);
+                    }
                   },
                 ),
                 ListTile(
@@ -304,9 +311,16 @@ class CartPanel extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.account_balance),
                   title: const Text('Transferencia'),
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(context);
-                    onCobrar('transferencia', aplicaIva);
+                    // PASO 6: Modal para transferencia con referencia bancaria
+                    final referencia = await showDialog<String>(
+                      context: context,
+                      builder: (context) => _TransferenciaModal(),
+                    );
+                    if (referencia != null && referencia.isNotEmpty && context.mounted) {
+                      onCobrar('transferencia', aplicaIva, referencia: referencia);
+                    }
                   },
                 ),
               ],
@@ -314,6 +328,119 @@ class CartPanel extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+// PASO 6: Modal para efectivo con cálculo de vuelto
+class _EfectivoModal extends StatefulWidget {
+  final double total;
+
+  const _EfectivoModal({required this.total});
+
+  @override
+  State<_EfectivoModal> createState() => _EfectivoModalState();
+}
+
+class _EfectivoModalState extends State<_EfectivoModal> {
+  final _montoController = TextEditingController();
+
+  @override
+  void dispose() {
+    _montoController.dispose();
+    super.dispose();
+  }
+
+  double get vuelto {
+    final monto = double.tryParse(_montoController.text) ?? 0;
+    return monto - widget.total;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Pago en Efectivo'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Total a pagar: \$${widget.total.toStringAsFixed(2)}'),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _montoController,
+            decoration: const InputDecoration(
+              labelText: 'Monto entregado',
+              border: OutlineInputBorder(),
+              prefixText: '\$',
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Vuelto: \$${vuelto.toStringAsFixed(2)}',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: vuelto >= 0 ? Colors.green : Colors.red,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: vuelto >= 0
+              ? () => Navigator.pop(context, double.tryParse(_montoController.text))
+              : null,
+          child: const Text('Aceptar'),
+        ),
+      ],
+    );
+  }
+}
+
+// PASO 6: Modal para transferencia con referencia bancaria
+class _TransferenciaModal extends StatefulWidget {
+  @override
+  State<_TransferenciaModal> createState() => _TransferenciaModalState();
+}
+
+class _TransferenciaModalState extends State<_TransferenciaModal> {
+  final _referenciaController = TextEditingController();
+
+  @override
+  void dispose() {
+    _referenciaController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Transferencia Bancaria'),
+      content: TextField(
+        controller: _referenciaController,
+        decoration: const InputDecoration(
+          labelText: 'Referencia Bancaria',
+          border: OutlineInputBorder(),
+          hintText: 'ID de la transacción',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: _referenciaController.text.isNotEmpty
+              ? () => Navigator.pop(context, _referenciaController.text)
+              : null,
+          child: const Text('Aceptar'),
+        ),
+      ],
     );
   }
 }

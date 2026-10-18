@@ -278,19 +278,26 @@ class OrderProvider with ChangeNotifier {
       );
 
       await ordenesBox.put(_currentOrden!.id, _currentOrden!);
-      
-      // 8. Si se detectaron cambios, imprimir automáticamente la comanda modificada
+
+      // 8. PASO 5B: Si se detectaron cambios, imprimir tickets separados
       if (cambios.tieneCambios) {
         try {
-          final detallesActualizados = detallesBox.values
-              .where((d) => _currentOrden!.detalleIds.contains(d.id))
-              .toList();
-          
-          await _bluetoothService.printKitchenCommand(
-            _currentOrden!,
-            detallesActualizados,
-          );
-          
+          // Imprimir productos añadidos
+          if (cambios.tieneAgregaciones) {
+            await _bluetoothService.printProductosAñadidos(
+              _currentOrden!,
+              cambios.detallesAgregados,
+            );
+          }
+
+          // Imprimir productos eliminados
+          if (cambios.tieneEliminaciones) {
+            await _bluetoothService.printProductosEliminados(
+              _currentOrden!,
+              cambios.detallesEliminados,
+            );
+          }
+
           // Resetear flags de modificación después de imprimir
           for (var detalleId in _currentOrden!.detalleIds) {
             final detalle = detallesBox.get(detalleId);
@@ -303,12 +310,25 @@ class OrderProvider with ChangeNotifier {
           // No interrumpir el flujo si falla la impresión
         }
       }
-      
+
       notifyListeners();
     } catch (e) {
       _error = e.toString();
       notifyListeners();
     }
+  }
+
+  // PASO 4: Actualizar notas de la orden
+  void updateOrdenNotas(String notas) {
+    if (_currentOrden == null) return;
+
+    final notasExistentes = _currentOrden!.notas ?? '';
+    final nuevasNotas = notasExistentes.isEmpty
+        ? notas
+        : '$notasExistentes - $notas';
+
+    _currentOrden = _currentOrden!.copyWith(notas: nuevasNotas);
+    notifyListeners();
   }
 
   // Editar comanda existente (reemplazar completamente los detalles)
@@ -500,7 +520,12 @@ class OrderProvider with ChangeNotifier {
     }
   }
 
-  Future<void> closeOrden(String metodoPago, double tasaCambio) async {
+  // PASO 6: Cerrar orden con información de pago
+  Future<void> closeOrden({
+    required String metodoPago,
+    double? montoEntregado,
+    String? referencia,
+  }) async {
     if (_currentOrden == null) return;
 
     try {
@@ -508,6 +533,9 @@ class OrderProvider with ChangeNotifier {
       final detalles = detallesBox.values
           .where((d) => _currentOrden!.detalleIds.contains(d.id))
           .toList();
+
+      final config = await _loadConfig();
+      final tasaCambio = config?.tasaCambio ?? 36.5;
 
       // CRITICAL FIX: En Web, no intentar imprimir realmente
       if (!kIsWeb) {
@@ -518,17 +546,34 @@ class OrderProvider with ChangeNotifier {
         }
       }
 
-      // CRITICAL FIX: Mantener el mismo ID, solo cambiar estado
+      // PASO 6: Actualizar orden con información de pago
       _currentOrden = _currentOrden!.copyWith(
         estado: 'cerrada',
         metodoPago: metodoPago,
       );
 
+      // Agregar notas con información de pago si existe
+      final notasPago = <String>[];
+      if (montoEntregado != null) {
+        notasPago.add('Efectivo: \$${montoEntregado.toStringAsFixed(2)}');
+      }
+      if (referencia != null && referencia.isNotEmpty) {
+        notasPago.add('Ref: $referencia');
+      }
+
+      if (notasPago.isNotEmpty) {
+        final notasExistentes = _currentOrden!.notas ?? '';
+        final nuevasNotas = notasExistentes.isEmpty
+            ? notasPago.join(', ')
+            : '$notasExistentes - ${notasPago.join(', ')}';
+        _currentOrden = _currentOrden!.copyWith(notas: nuevasNotas);
+      }
+
       // Intentar sincronizar con API primero (Online First)
       if (await _syncService.hasConnection) {
         try {
           final response = await _apiService.updateOrden(_currentOrden!.id, _currentOrden!);
-          
+
           // Verificar si hay advertencias de stock (response es un Map)
           if (response['advertencias'] != null && response['advertencias'] is List) {
             final advertencias = response['advertencias'] as List;
@@ -538,10 +583,10 @@ class OrderProvider with ChangeNotifier {
           } else {
             _stockWarnings = [];
           }
-          
+
           _currentOrden = Orden.fromJson(response['data']).copyWith(isLocal: false, syncedAt: DateTime.now());
           print('Orden sincronizada con API: ${_currentOrden!.numeroRecibo}');
-          
+
           // Eliminar orden local de Hive para evitar duplicados
           final ordenesBox = Hive.box<Orden>('ordenes');
           await ordenesBox.delete(_currentOrden!.id);
