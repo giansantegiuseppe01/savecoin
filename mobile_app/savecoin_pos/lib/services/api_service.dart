@@ -147,7 +147,6 @@ class ApiService {
     try {
       final url = '$_baseUrl/pos/ordenes/$id';
       print('updateOrden llamada a: $url');
-      print('Token: $_token');
       print('Payload: ${orden.toJson()}');
 
       final response = await http.put(
@@ -262,7 +261,6 @@ class ApiService {
   Future<Map<String, dynamic>> abrirTurno() async {
     try {
       print('abrirTurno llamada a: $_baseUrl/turnos/abrir');
-      print('Token: $_token');
 
       final response = await http.post(
         Uri.parse('$_baseUrl/turnos/abrir'),
@@ -286,7 +284,6 @@ class ApiService {
   Future<Map<String, dynamic>> cerrarTurno() async {
     try {
       print('cerrarTurno llamada a: $_baseUrl/turnos/cerrar');
-      print('Token: $_token');
 
       final response = await http.post(
         Uri.parse('$_baseUrl/turnos/cerrar'),

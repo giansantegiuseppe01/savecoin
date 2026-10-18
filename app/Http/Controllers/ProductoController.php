@@ -7,6 +7,7 @@ use App\Models\Producto;
 use App\Models\ProductoInsumo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ProductoController extends Controller
 {
@@ -15,8 +16,11 @@ class ProductoController extends Controller
         $query = Producto::query();
 
         if ($request->input('buscar')) {
-            $query->where('nombre', 'like', '%'.$request->input('buscar').'%')
-                ->orWhere('codigo', 'like', '%'.$request->input('buscar').'%');
+            $buscar = $request->input('buscar');
+            $query->where(function ($q) use ($buscar) {
+                $q->where('nombre', 'like', '%'.$buscar.'%')
+                    ->orWhere('codigo', 'like', '%'.$buscar.'%');
+            });
         }
 
         if ($request->input('categoria')) {
@@ -117,12 +121,21 @@ class ProductoController extends Controller
                 'message' => 'Producto creado exitosamente.',
             ]);
 
-        } catch (\Exception $e) {
+        } catch (ValidationException $e) {
             DB::rollBack();
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error al crear producto: '.$e->getMessage(),
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            report($e);
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al crear producto.',
             ], 500);
         }
     }
@@ -200,12 +213,21 @@ class ProductoController extends Controller
                 'message' => 'Producto actualizado exitosamente.',
             ]);
 
-        } catch (\Exception $e) {
+        } catch (ValidationException $e) {
             DB::rollBack();
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error al actualizar producto: '.$e->getMessage(),
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            report($e);
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar producto.',
             ], 500);
         }
     }
@@ -221,9 +243,11 @@ class ProductoController extends Controller
                 'message' => 'Producto eliminado exitosamente.',
             ]);
         } catch (\Exception $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error al eliminar producto: '.$e->getMessage(),
+                'message' => 'Error al eliminar producto.',
             ], 500);
         }
     }

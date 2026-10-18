@@ -6,6 +6,7 @@ use Illuminate\Console\Attributes\Argument;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Symfony\Component\Process\Process;
 use ZipArchive;
 
 #[Signature('backup:restore {file}')]
@@ -18,7 +19,10 @@ class RestoreDatabase extends Command
     public function handle(): int
     {
         $backupDir = storage_path('backups');
-        $backupZip = "{$backupDir}/{$this->file}";
+
+        // basename() evita path traversal (p. ej. "../../etc/algo.zip"): solo se
+        // aceptan archivos que estén directamente dentro de storage/backups.
+        $backupZip = $backupDir.'/'.basename($this->file);
 
         if (! file_exists($backupZip)) {
             $this->error("Backup no encontrado: {$backupZip}");
@@ -37,7 +41,6 @@ class RestoreDatabase extends Command
 
         $this->info('Descomprimiendo backup...');
 
-        // Descomprimir
         $zip = new ZipArchive;
         if ($zip->open($backupZip) !== true) {
             $this->error('Error al abrir archivo ZIP');
@@ -45,48 +48,53 @@ class RestoreDatabase extends Command
             return 1;
         }
 
-        $tempDir = "{$backupDir}/temp";
-        if (! file_exists($tempDir)) {
-            mkdir($tempDir, 0755, true);
-        }
-
-        $zip->extractTo($tempDir);
+        // Se lee únicamente la entrada "database.sql" (sin extractTo), así un ZIP
+        // manipulado no puede escribir archivos fuera del directorio (Zip Slip).
+        $sql = $zip->getFromName('database.sql');
         $zip->close();
 
-        $sqlFile = "{$tempDir}/database.sql";
-
-        if (! file_exists($sqlFile)) {
+        if ($sql === false) {
             $this->error('Archivo SQL no encontrado en el backup');
-            $this->cleanTemp($tempDir);
 
             return 1;
         }
 
+        $tempDir = "{$backupDir}/temp";
+        if (! file_exists($tempDir)) {
+            mkdir($tempDir, 0700, true);
+        }
+
+        $sqlFile = "{$tempDir}/database.sql";
+        file_put_contents($sqlFile, $sql);
+        chmod($sqlFile, 0600);
+
         $this->info('Restaurando base de datos...');
 
-        // Restaurar
-        $dbHost = config('database.connections.pgsql.host');
-        $dbDatabase = config('database.connections.pgsql.database');
-        $dbUser = config('database.connections.pgsql.username');
-        $dbPassword = config('database.connections.pgsql.password');
+        $config = config('database.connections.pgsql');
 
-        $command = sprintf(
-            'PGPASSWORD=%s psql -h %s -U %s -d %s -f %s',
-            $dbPassword,
-            $dbHost,
-            $dbUser,
-            $dbDatabase,
-            $sqlFile
+        // Sin shell y con la contraseña por variable de entorno (ver BackupDatabase).
+        $process = new Process(
+            [
+                'psql',
+                '--host', (string) $config['host'],
+                '--port', (string) ($config['port'] ?? 5432),
+                '--username', (string) $config['username'],
+                '--dbname', (string) $config['database'],
+                '--file', $sqlFile,
+            ],
+            null,
+            ['PGPASSWORD' => (string) $config['password']],
         );
-
-        exec($command, $output, $returnCode);
+        $process->setTimeout(1800);
+        $process->run();
 
         // Limpiar archivos temporales
         $this->cleanTemp($tempDir);
 
-        if ($returnCode !== 0) {
+        if (! $process->isSuccessful()) {
             $this->error('Error al restaurar base de datos');
-            $this->error('Código de retorno: '.$returnCode);
+            $this->error('Código de retorno: '.$process->getExitCode());
+            $this->error(trim($process->getErrorOutput()));
 
             return 1;
         }

@@ -236,6 +236,13 @@
 
 @push('scripts')
 <script>
+
+// Escapa texto antes de insertarlo en HTML (previene XSS almacenado)
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
 let insumosDisponibles = [];
 let insumosCargados = false;
 
@@ -282,8 +289,8 @@ function agregarFilaInsumo(insumoData = null) {
     const rowId = Date.now();
     
     const insumosOptions = insumosDisponibles.map(insumo => 
-        `<option value="${insumo.id}" data-unidad="${insumo.unidad_medida}" ${insumoData && insumoData.insumo_id === insumo.id ? 'selected' : ''}>
-            ${insumo.nombre} (${insumo.codigo}) - $${insumo.costo_unitario}/${insumo.unidad_medida}
+        `<option value="${escapeHtml(insumo.id)}" data-unidad="${escapeHtml(insumo.unidad_medida)}" ${insumoData && insumoData.insumo_id === insumo.id ? 'selected' : ''}>
+            ${escapeHtml(insumo.nombre)} (${escapeHtml(insumo.codigo)}) - $${escapeHtml(insumo.costo_unitario)}/${escapeHtml(insumo.unidad_medida)}
         </option>`
     ).join('');
     
@@ -304,13 +311,13 @@ function agregarFilaInsumo(insumoData = null) {
         <div class="col-md-3">
             <label class="form-label small">Cantidad</label>
             <input type="number" name="insumos[${rowId}][cantidad_requerida]" class="form-control form-control-sm" 
-                   step="0.0001" min="0.0001" value="${insumoData ? insumoData.cantidad_requerida : ''}" required>
+                   step="0.0001" min="0.0001" value="${insumoData ? escapeHtml(insumoData.cantidad_requerida) : ''}" required>
         </div>
         <div class="col-md-3">
             <label class="form-label small">Unidad</label>
-            <input type="hidden" name="insumos[${rowId}][unidad_medida]" class="unidad-medida-hidden" value="${unidadMedida}">
+            <input type="hidden" name="insumos[${rowId}][unidad_medida]" class="unidad-medida-hidden" value="${escapeHtml(unidadMedida)}">
             <input type="text" class="form-control form-control-sm unidad-medida-input"
-                   value="${unidadMedida}" disabled readonly>
+                   value="${escapeHtml(unidadMedida)}" disabled readonly>
         </div>
         <div class="col-md-1">
             <button type="button" class="btn btn-sm btn-danger" onclick="eliminarFilaInsumo('${rowId}')">

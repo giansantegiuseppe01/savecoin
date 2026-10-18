@@ -53,8 +53,8 @@ Este proyecto Laravel está diseñado como backend API para una aplicación móv
 
 ### Autenticación
 
-- `POST /api/register` - Registro de nuevo usuario
-- `POST /api/login` - Inicio de sesión
+- `POST /api/register` - Crear un usuario (**solo administradores**, requiere token de admin)
+- `POST /api/login` - Inicio de sesión (máx. 5 intentos por minuto por correo/IP)
 - `POST /api/logout` - Cierre de sesión (requiere autenticación)
 
 ### Usuarios (Requieren autenticación)

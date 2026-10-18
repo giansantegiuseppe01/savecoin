@@ -29,30 +29,26 @@ Route::post('/login', function (Request $request) {
     ]);
 
     if (Auth::attempt($credentials)) {
+        // Regenera el ID de sesión para evitar session fixation
         $request->session()->regenerate();
 
-        $user = Auth::user();
-
-        // Redirect based on user role
-        if ($user->rol === 'admin') {
-            return redirect()->intended(route('dashboard.index'));
-        } else {
-            // For employees, redirect to a POS-specific page or show access denied
-            // For now, redirect to dashboard with a message
-            return redirect()->intended(route('dashboard.index'));
-        }
+        return redirect()->intended(route('dashboard.index'));
     }
 
     return back()->withErrors([
         'email' => 'Las credenciales no coinciden con nuestros registros.',
-    ]);
-})->name('login.submit');
+    ])->onlyInput('email');
+})->middleware('throttle:login')->name('login.submit');
 
-Route::post('/logout', function () {
-    auth()->logout();
+Route::post('/logout', function (Request $request) {
+    Auth::guard('web')->logout();
+
+    // Invalida la sesión y renueva el token CSRF
+    $request->session()->invalidate();
+    $request->session()->regenerateToken();
 
     return redirect()->route('login');
-})->name('logout');
+})->middleware('auth')->name('logout');
 
 // Dashboard routes (solo admin)
 Route::middleware(['auth', 'admin'])->group(function () {

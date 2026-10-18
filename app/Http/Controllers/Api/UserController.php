@@ -69,20 +69,45 @@ class UserController extends Controller
             'direccion' => 'nullable|string|max:255',
         ]);
 
+        // No permitir que el último administrador se quite a sí mismo el rol de admin
+        if (isset($validated['rol']) && $validated['rol'] !== 'admin' && $user->isAdmin()
+            && User::where('rol', 'admin')->count() <= 1) {
+            return response()->json([
+                'message' => 'No se puede quitar el rol al único administrador.',
+            ], 422);
+        }
+
+        $revocarTokens = isset($validated['password'])
+            || (isset($validated['rol']) && $validated['rol'] !== $user->rol);
+
         if (isset($validated['password'])) {
             $validated['password'] = Hash::make($validated['password']);
         }
 
         $user->update($validated);
 
+        // Si cambió la contraseña o el rol se cierran las sesiones de API existentes
+        if ($revocarTokens) {
+            $user->tokens()->delete();
+        }
+
         return response()->json([
             'data' => $user->fresh(),
         ]);
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
         $user = User::findOrFail($id);
+
+        if ($user->id === $request->user()->id) {
+            return response()->json([
+                'message' => 'No puedes eliminar tu propia cuenta.',
+            ], 422);
+        }
+
+        // Revocar los tokens antes de borrar para que no queden credenciales huérfanas
+        $user->tokens()->delete();
         $user->delete();
 
         return response()->json([

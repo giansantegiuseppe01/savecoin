@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Configuracion;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class ConfiguracionController extends Controller
 {
@@ -48,10 +49,18 @@ class ConfiguracionController extends Controller
                 'message' => 'Configuración actualizada exitosamente.',
             ]);
 
-        } catch (\Exception $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al actualizar configuración: '.$e->getMessage(),
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar configuración.',
             ], 500);
         }
     }

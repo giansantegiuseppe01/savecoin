@@ -337,6 +337,13 @@
 
 @push('scripts')
 <script>
+
+// Escapa texto antes de insertarlo en HTML (previene XSS almacenado)
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
 // Cargar categorías al abrir el modal
 document.getElementById('gestionCategoriasModal').addEventListener('show.bs.modal', function() {
     cargarCategorias();
@@ -352,25 +359,29 @@ function cargarCategorias() {
             data.forEach(categoria => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td><strong>${categoria.nombre}</strong></td>
+                    <td><strong>${escapeHtml(categoria.nombre)}</strong></td>
                     <td>
-                        <span class="badge" style="background-color: ${categoria.color}; color: white;">
-                            ${categoria.color}
+                        <span class="badge" style="background-color: ${escapeHtml(categoria.color)}; color: white;">
+                            ${escapeHtml(categoria.color)}
                         </span>
                     </td>
-                    <td><i class="bi ${categoria.icono}"></i></td>
-                    <td>${categoria.descripcion || '-'}</td>
+                    <td><i class="bi ${escapeHtml(categoria.icono)}"></i></td>
+                    <td>${escapeHtml(categoria.descripcion || '-')}</td>
                     <td>
                         ${categoria.activo
                             ? '<span class="badge bg-success">Activo</span>'
                             : '<span class="badge bg-secondary">Inactivo</span>'}
                     </td>
                     <td class="text-center">
-                        <button class="btn btn-sm btn-danger" onclick="eliminarCategoria(${categoria.id}, '${categoria.nombre}')">
+                        <button type="button" class="btn btn-sm btn-danger btn-eliminar-categoria">
                             <i class="bi bi-trash"></i>
                         </button>
                     </td>
                 `;
+                // El nombre se pasa por closure (no por HTML) para evitar inyección en onclick
+                row.querySelector('.btn-eliminar-categoria').addEventListener('click', () => {
+                    eliminarCategoria(categoria.id, categoria.nombre);
+                });
                 tbody.appendChild(row);
             });
 
@@ -389,7 +400,7 @@ function actualizarSelectCategorias(categorias) {
     select.innerHTML = '<option value="">Sin categoría</option>';
     categorias.forEach(categoria => {
         if (categoria.activo) {
-            select.innerHTML += `<option value="${categoria.id}">${categoria.nombre}</option>`;
+            select.innerHTML += `<option value="${escapeHtml(categoria.id)}">${escapeHtml(categoria.nombre)}</option>`;
         }
     });
 

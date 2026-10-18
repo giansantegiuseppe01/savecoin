@@ -53,7 +53,7 @@
                                             <i class="bi bi-pencil"></i>
                                         </button>
                                         <button class="btn btn-sm btn-danger btn-action" 
-                                                onclick="eliminarUsuario({{ $usuario->id }}, '{{ $usuario->nombre }} {{ $usuario->apellido }}')"
+                                                onclick="eliminarUsuario({{ $usuario->id }}, @js($usuario->nombre.' '.$usuario->apellido))"
                                                 title="Eliminar">
                                             <i class="bi bi-trash"></i>
                                         </button>

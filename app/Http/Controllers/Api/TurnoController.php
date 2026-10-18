@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\CategoriaLibroContable;
 use App\Models\LibroContable;
 use App\Models\Turno;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class TurnoController extends Controller
 {
@@ -63,11 +65,14 @@ class TurnoController extends Controller
                 'data' => $turno,
             ], 201);
 
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
+            report($e);
             Log::error('Error al abrir turno', ['error' => $e->getMessage()]);
 
             return response()->json([
-                'message' => 'Error al abrir turno: '.$e->getMessage(),
+                'message' => 'Error al abrir turno.',
             ], 500);
         }
     }
@@ -86,9 +91,11 @@ class TurnoController extends Controller
             // Buscar turno abierto del usuario
             $turno = Turno::where('user_id', Auth::id())
                 ->where('estado', 'abierto')
+                ->lockForUpdate()
                 ->first();
 
             if (! $turno) {
+                DB::rollBack();
                 Log::error('No hay turno abierto', ['user_id' => Auth::id()]);
 
                 return response()->json([
@@ -146,12 +153,17 @@ class TurnoController extends Controller
                 'data' => $turno->load('ordens'),
             ]);
 
+        } catch (ValidationException $e) {
+            DB::rollBack();
+
+            throw $e;
         } catch (\Exception $e) {
+            report($e);
             DB::rollBack();
             Log::error('Error al cerrar turno', ['error' => $e->getMessage()]);
 
             return response()->json([
-                'message' => 'Error al cerrar turno: '.$e->getMessage(),
+                'message' => 'Error al cerrar turno.',
             ], 500);
         }
     }
@@ -176,8 +188,10 @@ class TurnoController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            report($e);
+
             return response()->json([
-                'message' => 'Error al obtener turno activo: '.$e->getMessage(),
+                'message' => 'Error al obtener turno activo.',
             ], 500);
         }
     }
@@ -195,8 +209,10 @@ class TurnoController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            report($e);
+
             return response()->json([
-                'message' => 'Error al obtener turnos: '.$e->getMessage(),
+                'message' => 'Error al obtener turnos.',
             ], 500);
         }
     }
@@ -204,16 +220,28 @@ class TurnoController extends Controller
     public function show(int $id): JsonResponse
     {
         try {
-            $turno = Turno::with(['ordens', 'user'])
-                ->findOrFail($id);
+            $query = Turno::with(['ordens', 'user']);
+
+            // Los empleados solo pueden consultar sus propios turnos; el admin ve todos.
+            if (! Auth::user()->isAdmin()) {
+                $query->where('user_id', Auth::id());
+            }
+
+            $turno = $query->findOrFail($id);
 
             return response()->json([
                 'data' => $turno,
             ]);
 
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json([
-                'message' => 'Error al obtener turno: '.$e->getMessage(),
+                'message' => 'Turno no encontrado.',
+            ], 404);
+        } catch (\Exception $e) {
+            report($e);
+
+            return response()->json([
+                'message' => 'Error al obtener turno.',
             ], 500);
         }
     }

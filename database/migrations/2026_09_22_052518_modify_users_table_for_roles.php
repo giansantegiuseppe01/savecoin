@@ -31,10 +31,13 @@ return new class extends Migration
             $table->dropColumn('name');
         });
 
-        // Modificar el enum de rol para eliminar 'cliente' (PostgreSQL)
-        DB::statement('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_rol_check');
-        DB::statement("ALTER TABLE users ADD CONSTRAINT users_rol_check CHECK (rol IN ('admin', 'empleado'))");
-        DB::statement("ALTER TABLE users ALTER COLUMN rol SET DEFAULT 'empleado'");
+        // Modificar el enum de rol para eliminar 'cliente' (solo PostgreSQL;
+        // en otros motores, p. ej. SQLite en los tests, no existen estas sentencias)
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_rol_check');
+            DB::statement("ALTER TABLE users ADD CONSTRAINT users_rol_check CHECK (rol IN ('admin', 'empleado'))");
+            DB::statement("ALTER TABLE users ALTER COLUMN rol SET DEFAULT 'empleado'");
+        }
     }
 
     /**
@@ -58,9 +61,11 @@ return new class extends Migration
             $table->dropColumn(['nombre', 'apellido']);
         });
 
-        // Restaurar el enum de rol con 'cliente' (PostgreSQL)
-        DB::statement('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_rol_check');
-        DB::statement("ALTER TABLE users ADD CONSTRAINT users_rol_check CHECK (rol IN ('admin', 'empleado', 'cliente'))");
-        DB::statement("ALTER TABLE users ALTER COLUMN rol SET DEFAULT 'cliente'");
+        // Restaurar el enum de rol con 'cliente' (solo PostgreSQL)
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_rol_check');
+            DB::statement("ALTER TABLE users ADD CONSTRAINT users_rol_check CHECK (rol IN ('admin', 'empleado', 'cliente'))");
+            DB::statement("ALTER TABLE users ALTER COLUMN rol SET DEFAULT 'cliente'");
+        }
     }
 };

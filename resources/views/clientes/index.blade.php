@@ -94,12 +94,12 @@
                                     <td class="text-center">
                                         <div class="btn-group" role="group">
                                             <button class="btn btn-sm btn-warning btn-action" 
-                                                    onclick="abrirModalEditar({{ $cliente->id }}, '{{ $cliente->nombre }}', '{{ $cliente->apellido }}', '{{ $cliente->cedula }}', '{{ $cliente->telefono ?? '' }}', '{{ $cliente->correo ?? '' }}')"
+                                                    onclick="abrirModalEditar({{ $cliente->id }}, @js($cliente->nombre), @js($cliente->apellido), @js($cliente->cedula), @js($cliente->telefono ?? ''), @js($cliente->correo ?? ''))"
                                                     title="Editar Cliente">
                                                 <i class="bi bi-pencil"></i>
                                             </button>
                                             <button class="btn btn-sm btn-danger btn-action" 
-                                                    onclick="eliminarCliente({{ $cliente->id }}, '{{ $cliente->nombre_completo }}')"
+                                                    onclick="eliminarCliente({{ $cliente->id }}, @js($cliente->nombre_completo))"
                                                     title="Eliminar Cliente">
                                                 <i class="bi bi-trash"></i>
                                             </button>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Cliente;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class ClienteController extends Controller
 {
@@ -38,9 +39,13 @@ class ClienteController extends Controller
 
             return response()->json($cliente, 201);
 
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
+            report($e);
+
             return response()->json([
-                'error' => 'Error al crear cliente: '.$e->getMessage(),
+                'error' => 'Error al crear cliente.',
             ], 500);
         }
     }
@@ -74,9 +79,13 @@ class ClienteController extends Controller
 
             return response()->json($cliente);
 
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
+            report($e);
+
             return response()->json([
-                'error' => 'Error al actualizar cliente: '.$e->getMessage(),
+                'error' => 'Error al actualizar cliente.',
             ], 500);
         }
     }
@@ -93,8 +102,10 @@ class ClienteController extends Controller
             return response()->json(['message' => 'Cliente eliminado'], 200);
 
         } catch (\Exception $e) {
+            report($e);
+
             return response()->json([
-                'error' => 'Error al eliminar cliente: '.$e->getMessage(),
+                'error' => 'Error al eliminar cliente.',
             ], 500);
         }
     }

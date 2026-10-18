@@ -58,7 +58,7 @@ class CategoriaLibroContableSeeder extends Seeder
         ];
 
         foreach ($categorias as $categoria) {
-            CategoriaLibroContable::create($categoria);
+            CategoriaLibroContable::firstOrCreate(['nombre' => $categoria['nombre']], $categoria);
         }
     }
 }
