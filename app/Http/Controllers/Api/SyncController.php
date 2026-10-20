@@ -102,6 +102,8 @@ class SyncController extends Controller
                             'precio_unitario' => $detalleData['precio_unitario'],
                             'cantidad' => $detalleData['cantidad'],
                             'subtotal' => $detalleData['subtotal'],
+                            'descuento' => 0,
+                            'total' => $detalleData['subtotal'],
                             'notas' => $detalleData['notas'] ?? null,
                             'fue_modificado' => $detalleData['fue_modificado'] ?? false,
                             'synced_at' => now(),
