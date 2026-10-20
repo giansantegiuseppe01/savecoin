@@ -151,6 +151,8 @@ class PosOrdenesTest extends TestCase
             'cedula' => 'V12345678',
         ]);
 
+        [$producto] = $this->productoConInsumo(10, 1);
+
         $response = $this->actingAs($empleado, 'sanctum')->postJson('/api/sync/ordenes', [
             'ordenes' => [[
                 'id' => (string) Str::uuid(),
@@ -169,6 +171,7 @@ class PosOrdenesTest extends TestCase
                 'fecha_hora' => now()->toIso8601String(),
                 'is_local' => true, // las órdenes pendientes siempre viajan así
                 'detalles' => [[
+                    'producto_id' => $producto->id,
                     'producto_nombre' => 'Pan',
                     'precio_unitario' => 10,
                     'cantidad' => 1,
