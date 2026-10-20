@@ -58,12 +58,12 @@ class DetalleOrden extends HiveObject {
 
   factory DetalleOrden.fromJson(Map<String, dynamic> json) {
     return DetalleOrden(
-      id: json['id'] as String? ?? const Uuid().v4(),
-      ordenId: json['orden_id'] as String,
-      productoId: json['producto_id'] as String,
-      productoNombre: json['producto_nombre'] as String,
-      precioUnitario: (json['precio_unitario'] as num).toDouble(),
-      cantidad: (json['cantidad'] as num).toDouble(),
+      id: json['id']?.toString() ?? const Uuid().v4(),
+      ordenId: json['orden_id'].toString(),
+      productoId: json['producto_id'].toString(),
+      productoNombre: json['producto_nombre'] as String? ?? '',
+      precioUnitario: double.tryParse(json['precio_unitario'].toString()) ?? 0.0,
+      cantidad: double.tryParse(json['cantidad'].toString()) ?? 0.0,
       notas: json['notas'] as String?,
       syncedAt: json['synced_at'] != null 
           ? DateTime.parse(json['synced_at'] as String) 
@@ -71,6 +71,28 @@ class DetalleOrden extends HiveObject {
       isLocal: false,
       isNew: false,
       fueModificado: json['fue_modificado'] as bool? ?? false,
+    );
+  }
+
+  /// Crea un detalle a partir de lo que devuelve el servidor (los ids y los
+  /// números pueden venir como int, double o String).
+  factory DetalleOrden.fromServer(Map<String, dynamic> json, {required String ordenId}) {
+    double num0(dynamic v) {
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? 0.0;
+      return 0.0;
+    }
+
+    return DetalleOrden(
+      id: json['id']?.toString(),
+      ordenId: ordenId,
+      productoId: json['producto_id'].toString(),
+      productoNombre: json['producto_nombre'] as String? ?? '',
+      precioUnitario: num0(json['precio_unitario']),
+      cantidad: num0(json['cantidad']),
+      notas: json['notas'] as String?,
+      isLocal: false,
+      isNew: false,
     );
   }
 

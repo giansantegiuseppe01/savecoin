@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
-import 'initial_screen.dart';
+import '../utils/constants.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -27,18 +27,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _loadApiUrl() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
-      _apiUrlController.text = prefs.getString('api_url') ?? 'http://127.0.0.1:8000/api';
+      _apiUrlController.text = prefs.getString('api_url') ?? kDefaultApiUrl;
     });
   }
 
   Future<void> _saveApiUrl() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('api_url', _apiUrlController.text);
+    await prefs.setString('api_url', _apiUrlController.text.trim());
     
     // Recargar configuración en el ApiService
-    final apiService = Provider.of<ApiService>(context, listen: false);
-    await apiService.reloadConfig();
+    // ApiService es un singleton: no está registrado en Provider
+    await ApiService().reloadConfig();
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -91,6 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _apiUrlController.dispose();
     super.dispose();
   }
 
@@ -103,22 +105,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final authProvider = context.read<AuthProvider>();
     final success = await authProvider.login(
-      _emailController.text,
+      _emailController.text.trim(),
       _passwordController.text,
     );
 
+    if (!mounted) return;
     setState(() {
       _isLoading = false;
     });
 
-    if (success && mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const InitialScreen()),
-      );
-    } else if (mounted) {
+    // Si el login es correcto, AuthGate cambia de pantalla por sí solo
+    if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Credenciales incorrectas'),
+        SnackBar(
+          content: Text(authProvider.error ?? 'Credenciales incorrectas'),
           backgroundColor: Colors.red,
         ),
       );

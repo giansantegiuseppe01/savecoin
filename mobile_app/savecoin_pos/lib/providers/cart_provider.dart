@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/producto.dart';
 import '../models/detalle_orden.dart';
+import '../utils/constants.dart';
 
 class CartItem {
   final Producto producto;
@@ -24,7 +25,7 @@ class CartProvider with ChangeNotifier {
   int get itemCount => _items.fold(0, (sum, item) => sum + item.cantidad);
   double get subtotal => _items.fold(0.0, (sum, item) => sum + item.subtotal);
   bool get aplicaIva => _aplicaIva;
-  double get impuesto => _aplicaIva ? subtotal * 0.16 : 0.0; // 16% IVA solo si se selecciona manualmente
+  double get impuesto => _aplicaIva ? subtotal * kIvaRate : 0.0; // IVA solo si se selecciona manualmente
   double get total => subtotal + impuesto;
 
   void addItem(Producto producto, {int cantidad = 1, String? notas}) {
@@ -93,32 +94,41 @@ class CartProvider with ChangeNotifier {
     }).toList();
   }
 
-  // Cargar items desde detalles de orden existente
-  void loadFromDetallesOrden(List<DetalleOrden> detalles, Map<String, Producto> productosMap) {
-    clear();
-    
-    // CRITICAL FIX: Consolidar productos con mismo id_producto
-    final productosConsolidados = <String, CartItem>{};
-    
-    for (var detalle in detalles) {
-      final producto = productosMap[detalle.productoId];
-      if (producto != null) {
-        if (productosConsolidados.containsKey(detalle.productoId)) {
-          // Ya existe, sumar cantidad
-          productosConsolidados[detalle.productoId]!.cantidad += detalle.cantidad.toInt();
-        } else {
-          // Nuevo producto, agregar
-          productosConsolidados[detalle.productoId] = CartItem(
-            producto: producto,
-            cantidad: detalle.cantidad.toInt(),
-            notas: detalle.notas,
-          );
-        }
+  /// Carga en el carrito los detalles de una orden existente.
+  ///
+  /// Si un producto ya no está en el catálogo local se reconstruye a partir del
+  /// detalle: antes se omitía y, al guardar la orden, ese producto desaparecía.
+  void loadFromDetallesOrden(
+    List<DetalleOrden> detalles,
+    Map<String, Producto> productosMap, {
+    bool aplicaIva = false,
+  }) {
+    _items.clear();
+    _aplicaIva = aplicaIva;
+
+    // Consolidar detalles del mismo producto
+    final consolidados = <String, CartItem>{};
+    for (final detalle in detalles) {
+      final existente = consolidados[detalle.productoId];
+      if (existente != null) {
+        existente.cantidad += detalle.cantidad.round();
+        continue;
       }
+      final producto = productosMap[detalle.productoId] ??
+          Producto(
+            id: detalle.productoId,
+            nombre: detalle.productoNombre,
+            codigo: '',
+            precioVenta: detalle.precioUnitario,
+          );
+      consolidados[detalle.productoId] = CartItem(
+        producto: producto,
+        cantidad: detalle.cantidad.round(),
+        notas: detalle.notas,
+      );
     }
-    
-    // Convertir a lista
-    _items.addAll(productosConsolidados.values);
+
+    _items.addAll(consolidados.values);
     notifyListeners();
   }
 }

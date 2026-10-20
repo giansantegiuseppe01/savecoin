@@ -8,7 +8,7 @@ import '../services/sync_service.dart';
 class ConfigProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
   final SyncService _syncService = SyncService();
-  
+
   Configuracion? _config;
   bool _isLoading = false;
   String? _error;
@@ -24,27 +24,29 @@ class ConfigProvider with ChangeNotifier {
 
     try {
       final configBox = Hive.box<Configuracion>('configuracion');
-      
+
       if (configBox.isEmpty) {
         // Crear configuración por defecto
-        _config = Configuracion();
-        await configBox.add(_config!);
-      } else {
-        _config = configBox.getAt(0);
+        await configBox.add(Configuracion());
       }
-      
-      // Intentar sincronizar configuración desde el servidor
+
+      // Intentar sincronizar la tasa de cambio desde el servidor
       await _syncService.syncConfiguracion();
-      
+
       // Recargar después de sincronizar
-      _config = configBox.getAt(0);
-      
-      // Actualizar API service con la configuración
+      var config = configBox.getAt(0)!;
+
+      // La URL guardada en SharedPreferences (la que se elige en el login) es la
+      // fuente de verdad. Antes esta pantalla la pisaba con la de Hive, por eso
+      // al reiniciar la app volvía a apuntar a localhost.
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('api_url', _config!.apiUrl);
-      await prefs.setString('api_token', _config!.apiToken);
-      _apiService.updateConfig(_config!.apiUrl, _config!.apiToken);
-      
+      final savedUrl = prefs.getString('api_url');
+      if (savedUrl != null && savedUrl.isNotEmpty && savedUrl != config.apiUrl) {
+        config = config.copyWith(apiUrl: savedUrl);
+        await configBox.putAt(0, config);
+      }
+
+      _config = config;
       _isLoading = false;
       notifyListeners();
     } catch (e) {
@@ -75,47 +77,11 @@ class ConfigProvider with ChangeNotifier {
       final configBox = Hive.box<Configuracion>('configuracion');
       _config = _config!.copyWith(apiUrl: url);
       await configBox.putAt(0, _config!);
-      
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('api_url', url);
-      _apiService.updateConfig(url, _config!.apiToken);
-      
-      notifyListeners();
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
-    }
-  }
+      _apiService.setBaseUrl(url);
 
-  Future<void> updateApiToken(String token) async {
-    if (_config == null) return;
-
-    try {
-      final configBox = Hive.box<Configuracion>('configuracion');
-      _config = _config!.copyWith(apiToken: token);
-      await configBox.putAt(0, _config!);
-      
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('api_token', token);
-      _apiService.updateConfig(_config!.apiUrl, token);
-      
-      notifyListeners();
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
-    }
-  }
-
-  Future<void> updatePrinter(String macAddress, String name) async {
-    if (_config == null) return;
-
-    try {
-      final configBox = Hive.box<Configuracion>('configuracion');
-      _config = _config!.copyWith(
-        printerMacAddress: macAddress,
-        printerName: name,
-      );
-      await configBox.putAt(0, _config!);
       notifyListeners();
     } catch (e) {
       _error = e.toString();

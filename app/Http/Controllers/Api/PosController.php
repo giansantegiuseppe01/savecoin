@@ -268,6 +268,10 @@ class PosController extends Controller
                 }
             }
 
+            // ¿La orden ya estaba cerrada antes de esta petición? Sirve para descontar
+            // el stock una sola vez, justo en la transición a "cerrada".
+            $estabaCerrada = $orden->estado === 'cerrada';
+
             // Si la orden ya está en el servidor y está cerrada, no permitir actualización
             if ($orden->estado === 'cerrada' && ! $orden->is_local) {
                 DB::rollBack();
@@ -321,9 +325,11 @@ class PosController extends Controller
                 $orden->is_local = $validated['is_local'];
             }
 
-            // Si la orden se está cerrando y era local, deducir stock y registrar en bitácora
-            if ($validated['estado'] === 'cerrada' && $orden->is_local) {
-                Log::info('Cerrando orden local', ['orden_id' => $orden->id]);
+            // Si la orden se está cerrando ahora, deducir stock y registrar en bitácora.
+            // Antes solo se hacía con is_local = true, así que las órdenes creadas con
+            // conexión (is_local = false) se cerraban sin descontar inventario.
+            if ($validated['estado'] === 'cerrada' && ! $estabaCerrada) {
+                Log::info('Cerrando orden', ['orden_id' => $orden->id]);
 
                 // Verificar turno activo
                 $turnoActivo = Turno::where('user_id', Auth::id())

@@ -1,15 +1,24 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../app_navigator.dart';
 import '../services/api_service.dart';
+import '../services/token_storage.dart';
+import '../utils/log.dart';
 
 class AuthProvider with ChangeNotifier {
   final ApiService _apiService;
+  final TokenStorage _tokenStorage = TokenStorage();
+
   String? _token;
   String? _userId;
   String? _userName;
   bool _isAuthenticated = false;
+  bool _isLoaded = false;
+  String? _error;
 
   AuthProvider(this._apiService) {
+    // Si el servidor rechaza el token (vencido o revocado) se cierra la sesión
+    _apiService.onUnauthorized = _handleUnauthorized;
     _loadAuthData();
   }
 
@@ -18,56 +27,86 @@ class AuthProvider with ChangeNotifier {
   String? get userName => _userName;
   bool get isAuthenticated => _isAuthenticated;
 
+  /// false mientras se lee la sesión guardada al abrir la app.
+  bool get isLoaded => _isLoaded;
+
+  /// Último mensaje de error del login (para mostrarlo en pantalla).
+  String? get error => _error;
+
   Future<void> _loadAuthData() async {
     final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString('auth_token');
+    _token = await _tokenStorage.read();
     _userId = prefs.getString('user_id');
     _userName = prefs.getString('user_name');
     _isAuthenticated = _token != null;
+
+    await _apiService.reloadConfig();
+    _isLoaded = true;
     notifyListeners();
   }
 
   Future<bool> login(String email, String password) async {
+    _error = null;
+
     try {
-      // Recargar configuración de API antes de login
+      // Recargar la URL por si se cambió en la pantalla de login
       await _apiService.reloadConfig();
 
-      // Always call the actual API for both web and mobile
       final response = await _apiService.login(email, password);
       if (response['success'] == true) {
-        _token = response['token'];
+        _token = response['token'] as String;
         _userId = response['user']['id'].toString();
-        _userName = response['user']['name'];
+        _userName = response['user']['name']?.toString() ?? email;
         _isAuthenticated = true;
 
+        await _tokenStorage.write(_token!);
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_token', _token!);
         await prefs.setString('user_id', _userId!);
         await prefs.setString('user_name', _userName!);
 
-        // Actualizar el token en ApiService
-        _apiService.updateConfig(_apiService.baseUrl, _token);
+        // El mismo ApiService lo usan todos los providers
+        _apiService.setToken(_token);
 
         notifyListeners();
         return true;
       }
+
+      _error = 'Credenciales incorrectas';
       return false;
     } catch (e) {
-      print('Login error: $e');
+      logd('Login error: $e');
+      _error = e is ApiException ? e.message : 'No se pudo iniciar sesión';
       return false;
     }
   }
 
   Future<void> logout() async {
+    // Revocar el token en el servidor mientras todavía es válido
+    await _apiService.logout();
+    await _clearSession();
+  }
+
+  Future<void> _handleUnauthorized() async {
+    if (!_isAuthenticated) return;
+    logd('Sesión vencida: el servidor rechazó el token.');
+    _error = 'Su sesión venció. Inicie sesión de nuevo.';
+    await _clearSession();
+  }
+
+  Future<void> _clearSession() async {
     _token = null;
     _userId = null;
     _userName = null;
     _isAuthenticated = false;
+    _apiService.setToken(null);
 
+    await _tokenStorage.clear();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
     await prefs.remove('user_id');
     await prefs.remove('user_name');
+
+    // Volver a la raíz de la app, que muestra el login (ver AuthGate)
+    appNavigatorKey.currentState?.popUntil((route) => route.isFirst);
 
     notifyListeners();
   }

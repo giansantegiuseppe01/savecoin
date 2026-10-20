@@ -1,23 +1,32 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../models/cliente.dart';
 import '../providers/cart_provider.dart';
+import '../utils/constants.dart';
 
 class CartPanel extends StatelessWidget {
-  final List<dynamic> cartItems;
+  final List<CartItem> cartItems;
   final double subtotal;
   final double impuesto;
   final double total;
   final int itemCount;
+  final bool aplicaIva;
   final Cliente? selectedCliente;
+
+  /// Número de la orden que se está editando (null = comanda nueva).
+  final String? ordenEnEdicion;
+
+  /// true mientras se guarda/cobra: desactiva los botones para evitar
+  /// envíos o cobros dobles.
+  final bool busy;
   final VoidCallback onClienteSelected;
   final VoidCallback onClearCart;
-  final Function(String) onRemoveItem;
-  final Function(String, int) onUpdateCantidad;
+  final void Function(String) onRemoveItem;
+  final void Function(String, int) onUpdateCantidad;
   final VoidCallback onSendToKitchen;
   final VoidCallback onPrintPreCuenta;
-  final Function(String, bool, {double? montoEntregado, String? referencia}) onCobrar; // PASO 6: Acepta monto entregado y referencia
-  final bool isNewCommand; // Nueva propiedad para controlar visibilidad del botón Cobrar
+  final void Function(bool) onAplicaIvaChanged;
+  final Future<void> Function(String metodoPago, bool aplicaIva,
+      {double? montoEntregado, String? referencia}) onCobrar;
 
   const CartPanel({
     super.key,
@@ -26,6 +35,7 @@ class CartPanel extends StatelessWidget {
     required this.impuesto,
     required this.total,
     required this.itemCount,
+    required this.aplicaIva,
     required this.selectedCliente,
     required this.onClienteSelected,
     required this.onClearCart,
@@ -33,8 +43,10 @@ class CartPanel extends StatelessWidget {
     required this.onUpdateCantidad,
     required this.onSendToKitchen,
     required this.onPrintPreCuenta,
+    required this.onAplicaIvaChanged,
     required this.onCobrar,
-    this.isNewCommand = true, // Por defecto true (nueva comanda)
+    this.ordenEnEdicion,
+    this.busy = false,
   });
 
   @override
@@ -56,12 +68,15 @@ class CartPanel extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Pedido Actual',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                Flexible(
+                  child: Text(
+                    ordenEnEdicion == null ? 'Pedido Actual' : 'Editando $ordenEnEdicion',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
                 if (itemCount > 0)
@@ -137,27 +152,26 @@ class CartPanel extends StatelessWidget {
               color: Colors.grey[50],
               border: Border(top: BorderSide(color: Colors.grey[300]!)),
             ),
-            child: Consumer<CartProvider>(
-              builder: (context, cartProvider, _) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _TotalRow(label: 'Subtotal', value: '\$${subtotal.toStringAsFixed(2)}'),
-                    if (cartProvider.aplicaIva)
-                      _TotalRow(label: 'Impuesto (16%)', value: '\$${impuesto.toStringAsFixed(2)}'),
-                    const SizedBox(height: 8),
-                    _TotalRow(
-                      label: 'Total',
-                      value: '\$${total.toStringAsFixed(2)}',
-                      isBold: true,
-                      fontSize: 20,
-                    ),
-                  ],
-                );
-              },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _TotalRow(label: 'Subtotal', value: '\$${subtotal.toStringAsFixed(2)}'),
+                if (aplicaIva)
+                  _TotalRow(
+                    label: 'Impuesto (${(kIvaRate * 100).round()}%)',
+                    value: '\$${impuesto.toStringAsFixed(2)}',
+                  ),
+                const SizedBox(height: 8),
+                _TotalRow(
+                  label: 'Total',
+                  value: '\$${total.toStringAsFixed(2)}',
+                  isBold: true,
+                  fontSize: 20,
+                ),
+              ],
             ),
           ),
-          
+
           // Botones de acción
           Container(
             padding: const EdgeInsets.all(16),
@@ -166,9 +180,11 @@ class CartPanel extends StatelessWidget {
               children: [
                 if (itemCount > 0) ...[
                   ElevatedButton.icon(
-                    onPressed: onSendToKitchen,
+                    onPressed: busy ? null : onSendToKitchen,
                     icon: const Icon(Icons.restaurant),
-                    label: const Text('Enviar a Cocina'),
+                    label: Text(ordenEnEdicion == null
+                        ? 'Enviar a Cocina'
+                        : 'Guardar y Enviar a Cocina'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
@@ -177,7 +193,7 @@ class CartPanel extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   ElevatedButton.icon(
-                    onPressed: onPrintPreCuenta,
+                    onPressed: busy ? null : onPrintPreCuenta,
                     icon: const Icon(Icons.receipt),
                     label: const Text('Imprimir Pre-cuenta'),
                     style: ElevatedButton.styleFrom(
@@ -189,28 +205,13 @@ class CartPanel extends StatelessWidget {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      // Botón Cobrar solo visible si NO es una comanda nueva
-                      if (!isNewCommand)
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _showPaymentDialog(context),
-                            icon: const Icon(Icons.payments),
-                            label: const Text('Cobrar'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                          ),
-                        ),
-                      if (!isNewCommand) const SizedBox(width: 8),
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: onSendToKitchen,
-                          icon: const Icon(Icons.restaurant),
-                          label: const Text('Guardar'),
+                          onPressed: busy ? null : () => _cobrar(context),
+                          icon: const Icon(Icons.payments),
+                          label: const Text('Cobrar'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
+                            backgroundColor: Colors.green,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 12),
                           ),
@@ -218,7 +219,7 @@ class CartPanel extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        onPressed: onClearCart,
+                        onPressed: busy ? null : onClearCart,
                         icon: const Icon(Icons.delete),
                         color: Colors.red,
                         tooltip: 'Limpiar carrito',
@@ -234,105 +235,128 @@ class CartPanel extends StatelessWidget {
     );
   }
 
-  void _showPaymentDialog(BuildContext context) {
-    showDialog(
+  /// Abre el diálogo de pago y, si el usuario confirma, llama a [onCobrar].
+  ///
+  /// Antes el diálogo se cerraba antes de abrir el de efectivo/transferencia y
+  /// luego se comprobaba `context.mounted` del diálogo ya cerrado (siempre
+  /// false), así que el cobro en efectivo o por transferencia nunca se
+  /// ejecutaba. Ahora el diálogo devuelve la selección completa.
+  Future<void> _cobrar(BuildContext context) async {
+    final pago = await showDialog<_Pago>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          final cartProvider = context.watch<CartProvider>();
-          final aplicaIva = cartProvider.aplicaIva;
-          final double tasaIva = 0.16; // 16% IVA
-
-          return AlertDialog(
-            title: const Text('Seleccionar Método de Pago'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Checkbox para aplicar IVA
-                CheckboxListTile(
-                  title: const Text('Aplicar IVA (16%)'),
-                  subtitle: Text('Subtotal: \$${subtotal.toStringAsFixed(2)}'),
-                  value: aplicaIva,
-                  onChanged: (value) {
-                    cartProvider.setAplicaIva(value ?? false);
-                  },
-                ),
-                
-                // Mostrar cálculo dinámico
-                if (aplicaIva) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'IVA: \$${(subtotal * tasaIva).toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  Text(
-                    'Total: \$${(subtotal * (1 + tasaIva)).toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ] else ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Total: \$${subtotal.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-                
-                const Divider(),
-                const Text('Método de Pago:'),
-                ListTile(
-                  leading: const Icon(Icons.money),
-                  title: const Text('Efectivo'),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    // PASO 6: Modal para efectivo con cálculo de vuelto
-                    final montoEntregado = await showDialog<double>(
-                      context: context,
-                      builder: (context) => _EfectivoModal(total: aplicaIva ? subtotal * (1 + tasaIva) : subtotal),
-                    );
-                    if (montoEntregado != null && context.mounted) {
-                      onCobrar('efectivo', aplicaIva, montoEntregado: montoEntregado);
-                    }
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.credit_card),
-                  title: const Text('Tarjeta'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    onCobrar('tarjeta', aplicaIva);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.account_balance),
-                  title: const Text('Transferencia'),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    // PASO 6: Modal para transferencia con referencia bancaria
-                    final referencia = await showDialog<String>(
-                      context: context,
-                      builder: (context) => _TransferenciaModal(),
-                    );
-                    if (referencia != null && referencia.isNotEmpty && context.mounted) {
-                      onCobrar('transferencia', aplicaIva, referencia: referencia);
-                    }
-                  },
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+      builder: (_) => _PagoDialog(subtotal: subtotal, aplicaIvaInicial: aplicaIva),
+    );
+    if (pago == null) return;
+    onAplicaIvaChanged(pago.aplicaIva);
+    await onCobrar(
+      pago.metodo,
+      pago.aplicaIva,
+      montoEntregado: pago.montoEntregado,
+      referencia: pago.referencia,
     );
   }
 }
 
-// PASO 6: Modal para efectivo con cálculo de vuelto
+class _Pago {
+  final String metodo;
+  final bool aplicaIva;
+  final double? montoEntregado;
+  final String? referencia;
+
+  const _Pago(this.metodo, this.aplicaIva, {this.montoEntregado, this.referencia});
+}
+
+class _PagoDialog extends StatefulWidget {
+  final double subtotal;
+  final bool aplicaIvaInicial;
+
+  const _PagoDialog({required this.subtotal, required this.aplicaIvaInicial});
+
+  @override
+  State<_PagoDialog> createState() => _PagoDialogState();
+}
+
+class _PagoDialogState extends State<_PagoDialog> {
+  late bool _aplicaIva = widget.aplicaIvaInicial;
+
+  double get _iva => _aplicaIva ? widget.subtotal * kIvaRate : 0.0;
+  double get _total => widget.subtotal + _iva;
+
+  Future<void> _efectivo() async {
+    final monto = await showDialog<double>(
+      context: context,
+      builder: (_) => _EfectivoModal(total: _total),
+    );
+    if (monto != null && mounted) {
+      Navigator.pop(context, _Pago('efectivo', _aplicaIva, montoEntregado: monto));
+    }
+  }
+
+  Future<void> _transferencia() async {
+    final referencia = await showDialog<String>(
+      context: context,
+      builder: (_) => const _TransferenciaModal(),
+    );
+    if (referencia != null && referencia.isNotEmpty && mounted) {
+      Navigator.pop(context, _Pago('transferencia', _aplicaIva, referencia: referencia));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final porcentaje = (kIvaRate * 100).round();
+    return AlertDialog(
+      title: const Text('Seleccionar Método de Pago'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CheckboxListTile(
+              title: Text('Aplicar IVA ($porcentaje%)'),
+              subtitle: Text('Subtotal: \$${widget.subtotal.toStringAsFixed(2)}'),
+              value: _aplicaIva,
+              onChanged: (v) => setState(() => _aplicaIva = v ?? false),
+            ),
+            if (_aplicaIva) ...[
+              const SizedBox(height: 8),
+              Text('IVA: \$${_iva.toStringAsFixed(2)}', style: const TextStyle(fontSize: 14)),
+            ],
+            const SizedBox(height: 4),
+            Text(
+              'Total: \$${_total.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const Divider(),
+            const Text('Método de Pago:'),
+            ListTile(
+              leading: const Icon(Icons.money),
+              title: const Text('Efectivo'),
+              onTap: _efectivo,
+            ),
+            ListTile(
+              leading: const Icon(Icons.credit_card),
+              title: const Text('Tarjeta'),
+              onTap: () => Navigator.pop(context, _Pago('tarjeta', _aplicaIva)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.account_balance),
+              title: const Text('Transferencia'),
+              onTap: _transferencia,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+      ],
+    );
+  }
+}
+
+// Modal de efectivo con cálculo de vuelto
 class _EfectivoModal extends StatefulWidget {
   final double total;
 
@@ -351,10 +375,9 @@ class _EfectivoModalState extends State<_EfectivoModal> {
     super.dispose();
   }
 
-  double get vuelto {
-    final monto = double.tryParse(_montoController.text) ?? 0;
-    return monto - widget.total;
-  }
+  double? get _monto => double.tryParse(_montoController.text.trim().replaceAll(',', '.'));
+
+  double get vuelto => (_monto ?? 0) - widget.total;
 
   @override
   Widget build(BuildContext context) {
@@ -392,8 +415,8 @@ class _EfectivoModalState extends State<_EfectivoModal> {
           child: const Text('Cancelar'),
         ),
         ElevatedButton(
-          onPressed: vuelto >= 0
-              ? () => Navigator.pop(context, double.tryParse(_montoController.text))
+          onPressed: _monto != null && vuelto >= -0.005
+              ? () => Navigator.pop(context, _monto)
               : null,
           child: const Text('Aceptar'),
         ),
@@ -402,8 +425,10 @@ class _EfectivoModalState extends State<_EfectivoModal> {
   }
 }
 
-// PASO 6: Modal para transferencia con referencia bancaria
+// Modal de transferencia con referencia bancaria
 class _TransferenciaModal extends StatefulWidget {
+  const _TransferenciaModal();
+
   @override
   State<_TransferenciaModal> createState() => _TransferenciaModalState();
 }
@@ -428,6 +453,8 @@ class _TransferenciaModalState extends State<_TransferenciaModal> {
           border: OutlineInputBorder(),
           hintText: 'ID de la transacción',
         ),
+        // Sin esto el botón "Aceptar" nunca se habilitaba
+        onChanged: (_) => setState(() {}),
       ),
       actions: [
         TextButton(
@@ -435,8 +462,8 @@ class _TransferenciaModalState extends State<_TransferenciaModal> {
           child: const Text('Cancelar'),
         ),
         ElevatedButton(
-          onPressed: _referenciaController.text.isNotEmpty
-              ? () => Navigator.pop(context, _referenciaController.text)
+          onPressed: _referenciaController.text.trim().isNotEmpty
+              ? () => Navigator.pop(context, _referenciaController.text.trim())
               : null,
           child: const Text('Aceptar'),
         ),
@@ -446,7 +473,7 @@ class _TransferenciaModalState extends State<_TransferenciaModal> {
 }
 
 class _CartItem extends StatelessWidget {
-  final dynamic item;
+  final CartItem item;
   final VoidCallback onRemove;
   final Function(int) onUpdateCantidad;
 

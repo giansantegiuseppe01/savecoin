@@ -5,8 +5,18 @@ import '../models/producto.dart';
 import '../models/cliente.dart';
 import '../models/orden.dart';
 import '../models/configuracion.dart';
+import '../utils/log.dart';
 
+/// Sincronización entre Hive (local) y el servidor. Es un único objeto
+/// compartido: así la bandera `_isSyncing` evita de verdad dos sincronizaciones
+/// simultáneas.
 class SyncService {
+  static final SyncService _instance = SyncService._internal();
+
+  factory SyncService() => _instance;
+
+  SyncService._internal();
+
   final ApiService _apiService = ApiService();
   final Connectivity _connectivity = Connectivity();
   bool _isSyncing = false;
@@ -33,17 +43,14 @@ class SyncService {
     try {
       final productos = await _apiService.getProductos();
       final productosBox = Hive.box<Producto>('productos');
-      
-      // Limpiar catálogo previo e insertar lo actualizado por el servidor
+
+      // Reemplazar el catálogo de una sola vez (sin dejar la caja vacía a medias)
       await productosBox.clear();
-      
-      for (var producto in productos) {
-        await productosBox.put(producto.id, producto);
-      }
-      
-      print('Sincronizados ${productos.length} productos en Hive.');
+      await productosBox.putAll({for (final p in productos) p.id: p});
+
+      logd('Sincronizados ${productos.length} productos en Hive.');
     } catch (e) {
-      print('Error sincronizando productos: $e');
+      logd('Error sincronizando productos: $e');
     }
   }
 
@@ -54,14 +61,12 @@ class SyncService {
     try {
       final clientes = await _apiService.getClientes();
       final clientesBox = Hive.box<Cliente>('clientes');
-      
-      for (var cliente in clientes) {
-        await clientesBox.put(cliente.id, cliente);
-      }
-      
-      print('Sincronizados ${clientes.length} clientes desde el servidor');
+
+      await clientesBox.putAll({for (final c in clientes) c.id: c});
+
+      logd('Sincronizados ${clientes.length} clientes desde el servidor');
     } catch (e) {
-      print('Error sincronizando clientes: $e');
+      logd('Error sincronizando clientes: $e');
     }
   }
 
@@ -73,32 +78,32 @@ class SyncService {
 
     try {
       final clientesBox = Hive.box<Cliente>('clientes');
-      final syncQueueBox = Hive.box('sync_queue');
+      final ordenesBox = Hive.box<Orden>('ordenes');
 
-      final clientesPendientes = clientesBox.values
-          .where((c) => c.isLocal)
-          .toList();
-
-      if (clientesPendientes.isEmpty) {
-        _isSyncing = false;
-        return;
-      }
+      final clientesPendientes = clientesBox.values.where((c) => c.isLocal).toList();
 
       for (var cliente in clientesPendientes) {
         try {
           final clienteDesdeAPI = await _apiService.createCliente(cliente);
-          // Eliminar el cliente local con ID temporal
+
+          // Reemplazar el cliente local (ID temporal) por el del servidor
           await clientesBox.delete(cliente.id);
-          // Agregar el cliente desde API con ID real
           await clientesBox.put(clienteDesdeAPI.id, clienteDesdeAPI);
-          await syncQueueBox.delete(cliente.id);
-          print('Cliente sincronizado: ${cliente.nombreCompleto}');
+
+          // Las órdenes locales que apuntaban al ID temporal pasan al ID real
+          final ordenesDelCliente =
+              ordenesBox.values.where((o) => o.clienteId == cliente.id).toList();
+          for (var orden in ordenesDelCliente) {
+            await ordenesBox.put(orden.id, orden.copyWith(clienteId: clienteDesdeAPI.id));
+          }
+
+          logd('Cliente sincronizado: ${cliente.nombreCompleto}');
         } catch (e) {
-          print('Error sincronizando cliente ${cliente.nombreCompleto}: $e');
+          logd('Error sincronizando cliente ${cliente.nombreCompleto}: $e');
         }
       }
     } catch (e) {
-      print('Error en sincronización de clientes: $e');
+      logd('Error en sincronización de clientes: $e');
     } finally {
       _isSyncing = false;
     }
@@ -111,7 +116,7 @@ class SyncService {
     try {
       final config = await _apiService.getConfiguracion();
       final configBox = Hive.box<Configuracion>('configuracion');
-      
+
       if (configBox.isNotEmpty) {
         final currentConfig = configBox.getAt(0);
         if (currentConfig != null) {
@@ -124,9 +129,9 @@ class SyncService {
       } else {
         await configBox.add(config);
       }
-      print('Configuración sincronizada correctamente.');
+      logd('Configuración sincronizada correctamente.');
     } catch (e) {
-      print('Error sincronizando configuración: $e');
+      logd('Error sincronizando configuración: $e');
     }
   }
 
@@ -140,22 +145,17 @@ class SyncService {
       final ordenesBox = Hive.box<Orden>('ordenes');
       final syncQueueBox = Hive.box('sync_queue');
 
-      final ordenesPendientes = ordenesBox.values
-          .where((o) => o.isLocal)
-          .toList();
+      // Solo las cerradas: una orden abierta todavía se está editando
+      final ordenesPendientes =
+          ordenesBox.values.where((o) => o.isLocal && o.estado != 'abierta').toList();
 
-      if (ordenesPendientes.isEmpty) {
-        _isSyncing = false;
-        return;
-      }
-
-      final batchSize = 10;
+      const batchSize = 10;
       for (var i = 0; i < ordenesPendientes.length; i += batchSize) {
         final batch = ordenesPendientes.skip(i).take(batchSize).toList();
-        
+
         try {
           final success = await _apiService.syncOrdenes(batch);
-          
+
           if (success) {
             for (var orden in batch) {
               final updatedOrden = orden.copyWith(
@@ -167,11 +167,11 @@ class SyncService {
             }
           }
         } catch (e) {
-          print('Error sincronizando lote de órdenes: $e');
+          logd('Error sincronizando lote de órdenes: $e');
         }
       }
     } catch (e) {
-      print('Error en sincronización de órdenes: $e');
+      logd('Error en sincronización de órdenes: $e');
     } finally {
       _isSyncing = false;
     }
@@ -189,26 +189,22 @@ class SyncService {
   // Sincronización completa
   Future<void> fullSync() async {
     if (!await hasConnection) {
-      print('Sin conexión a internet. No se puede sincronizar.');
+      logd('Sin conexión a internet. No se puede sincronizar.');
       return;
     }
 
-    print('Iniciando sincronización completa...');
+    logd('Iniciando sincronización completa...');
 
     await syncConfiguracion();
     await syncProductos();
     await syncClientes();
-    await syncClientesLocales(); // Sincronizar clientes locales
+    await syncClientesLocales(); // primero los clientes: las órdenes dependen de ellos
     await syncOrdenesOffline();
 
-    print('Sincronización completada con éxito.');
+    logd('Sincronización completada.');
   }
 
-  void startAutoSync() {
-    // Listo para implementar Timer.periodic cuando requieras background sync
-  }
-
-  // Sincronización manual (para botón "Sincronizar Manual")
+  // Sincronización manual (para el botón "Sincronizar")
   Future<Map<String, dynamic>> manualSync() async {
     final result = <String, dynamic>{
       'success': false,
@@ -224,15 +220,26 @@ class SyncService {
 
     try {
       await fullSync();
-      
+
       final clientesBox = Hive.box<Cliente>('clientes');
       final ordenesBox = Hive.box<Orden>('ordenes');
-      
-      result['success'] = true;
+
+      final clientesPendientes = clientesBox.values.where((c) => c.isLocal).length;
+      final ordenesPendientes =
+          ordenesBox.values.where((o) => o.isLocal && o.estado != 'abierta').length;
+
       result['clientes_synced'] = clientesBox.values.where((c) => !c.isLocal).length;
       result['ordenes_synced'] = ordenesBox.values.where((o) => !o.isLocal).length;
-      result['message'] = 'Sincronización completada exitosamente';
-      
+
+      // Antes siempre decía "exitosa" aunque quedaran cosas sin enviar.
+      if (clientesPendientes == 0 && ordenesPendientes == 0) {
+        result['success'] = true;
+        result['message'] = 'Sincronización completada exitosamente';
+      } else {
+        result['message'] = 'Quedan pendientes: $clientesPendientes cliente(s) y '
+            '$ordenesPendientes orden(es). Revise la conexión con el servidor.';
+      }
+
       return result;
     } catch (e) {
       result['message'] = 'Error durante sincronización: $e';

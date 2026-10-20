@@ -1,28 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import '../models/producto.dart';
 import '../models/cliente.dart';
-import '../models/orden.dart';
 import '../models/detalle_orden.dart';
-import '../models/configuracion.dart';
-import '../providers/product_provider.dart';
 import '../providers/cart_provider.dart';
-import '../providers/order_provider.dart';
-import '../providers/config_provider.dart';
 import '../providers/client_provider.dart';
+import '../providers/config_provider.dart';
+import '../providers/order_provider.dart';
+import '../providers/product_provider.dart';
 import '../providers/shift_provider.dart';
 import '../services/api_service.dart';
-import '../widgets/product_card.dart';
+import '../utils/log.dart';
 import '../widgets/cart_panel.dart';
 import '../widgets/category_sidebar.dart';
-import '../widgets/ticket_preview_modal.dart';
+import '../widgets/order_widgets.dart';
+import '../widgets/product_card.dart';
 import 'client_selector_screen.dart';
-import 'open_orders_screen.dart';
 import 'closed_orders_screen.dart';
 import 'config_screen.dart';
-import 'initial_screen.dart';
+import 'open_orders_screen.dart';
 
 class POSScreen extends StatefulWidget {
   const POSScreen({super.key});
@@ -33,7 +28,13 @@ class POSScreen extends StatefulWidget {
 
 class _POSScreenState extends State<POSScreen> {
   int _stockBajoCount = 0;
-  bool _isLoadingAlerts = false;
+
+  /// true mientras se guarda o cobra una orden (evita toques dobles).
+  bool _busy = false;
+
+  /// Cliente que se usa al cobrar sin haber elegido uno.
+  static final Cliente _clienteGeneral =
+      Cliente(id: '', nombre: 'General', apellido: '', cedula: '');
 
   @override
   void initState() {
@@ -41,38 +42,166 @@ class _POSScreenState extends State<POSScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ProductProvider>().loadProductos();
       context.read<ConfigProvider>().loadConfig();
-      context.read<OrderProvider>().loadOrdenesAbiertas();
+      context.read<OrderProvider>().loadOrdenes();
       context.read<ClientProvider>().loadClientes();
       _loadStockAlerts();
     });
   }
 
   Future<void> _loadStockAlerts() async {
-    setState(() => _isLoadingAlerts = true);
     try {
-      final apiService = ApiService();
-      final alerts = await apiService.getStockAlerts();
-      if (mounted) {
-        setState(() {
-          _stockBajoCount = alerts['counters']['stock_bajo'] ?? 0;
-          _isLoadingAlerts = false;
-        });
-      }
+      final alerts = await ApiService().getStockAlerts();
+      final counters = alerts['counters'];
+      final bajo = counters is Map ? counters['stock_bajo'] : null;
+      if (mounted) setState(() => _stockBajoCount = bajo is num ? bajo.toInt() : 0);
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoadingAlerts = false);
-      }
+      logd('No se pudieron cargar las alertas de stock: $e');
     }
   }
 
-  Future<void> _actualizarOrdenEnTiempoReal(CartProvider cartProvider, OrderProvider orderProvider) async {
-    if (orderProvider.currentOrden == null) return;
-    
+  double get _tasaCambio => context.read<ConfigProvider>().config?.tasaCambio ?? 1;
+
+  /// Sin la configuración (tasa de cambio) no se puede cobrar ni imprimir:
+  /// la tasa quedaría grabada mal en la orden.
+  bool _configLista() {
+    if (context.read<ConfigProvider>().config != null) return true;
+    _aviso('La configuración aún no se ha cargado. Inténtelo de nuevo en un momento.',
+        error: true);
+    return false;
+  }
+
+  void _aviso(String texto, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(texto), backgroundColor: error ? Colors.red : null),
+    );
+  }
+
+  /// Convierte el carrito en detalles de la orden en edición (o de una nueva).
+  List<DetalleOrden> _detallesDelCarrito() {
+    final orderId = context.read<OrderProvider>().currentOrden?.id ?? '';
+    return context.read<CartProvider>().toDetallesOrden(orderId);
+  }
+
+  /// Ejecuta una acción larga con los botones bloqueados y muestra el resultado.
+  /// El carrito solo se vacía si la acción terminó bien: si falla, el pedido no
+  /// se pierde.
+  Future<void> _ejecutar(Future<AccionResultado> Function() accion,
+      {bool limpiarCarrito = false}) async {
+    if (_busy) return;
+    setState(() => _busy = true);
     try {
-      final detallesNuevos = cartProvider.toDetallesOrden(orderProvider.currentOrden!.id);
-      await orderProvider.updateOrden(detallesNuevos);
-    } catch (e) {
-      print('Error al actualizar orden en tiempo real: $e');
+      final resultado = await accion();
+      if (!mounted) return;
+      if (resultado.ok && limpiarCarrito) context.read<CartProvider>().clear();
+      await mostrarResultado(context, resultado, tasaCambio: _tasaCambio);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<String?> _pedirNotas() {
+    return showDialog<String>(
+      context: context,
+      builder: (_) => const _NotasDialog(),
+    );
+  }
+
+  Future<void> _enviarACocina() async {
+    final orders = context.read<OrderProvider>();
+    final cart = context.read<CartProvider>();
+    final cliente = orders.selectedCliente;
+
+    if (!_configLista()) return;
+    if (cliente == null) {
+      _aviso('Debe seleccionar un cliente antes de enviar la comanda', error: true);
+      return;
+    }
+
+    // null = el usuario cerró el diálogo: no se envía nada
+    final notas = await _pedirNotas();
+    if (notas == null || !mounted) return;
+
+    await _ejecutar(
+      () => orders.enviarComanda(
+        detalles: _detallesDelCarrito(),
+        cliente: cliente,
+        tasaCambio: _tasaCambio,
+        aplicaIva: cart.aplicaIva,
+        notas: notas,
+      ),
+      limpiarCarrito: true,
+    );
+  }
+
+  Future<void> _imprimirPreCuenta() async {
+    if (!_configLista()) return;
+    final orders = context.read<OrderProvider>();
+    final cart = context.read<CartProvider>();
+    await _ejecutar(() => orders.imprimirPreCuenta(
+          detalles: _detallesDelCarrito(),
+          cliente: orders.selectedCliente,
+          tasaCambio: _tasaCambio,
+          aplicaIva: cart.aplicaIva,
+        ));
+  }
+
+  Future<void> _cobrar(String metodoPago, bool aplicaIva,
+      {double? montoEntregado, String? referencia}) async {
+    if (!_configLista()) return;
+    final orders = context.read<OrderProvider>();
+    await _ejecutar(
+      () => orders.cobrar(
+        detalles: _detallesDelCarrito(),
+        cliente: orders.selectedCliente ?? _clienteGeneral,
+        tasaCambio: _tasaCambio,
+        metodoPago: metodoPago,
+        aplicaIva: aplicaIva,
+        montoEntregado: montoEntregado,
+        referencia: referencia,
+      ),
+      limpiarCarrito: true,
+    );
+  }
+
+  Future<void> _sincronizar() async {
+    final result = await context.read<OrderProvider>().syncService.manualSync();
+    if (!mounted) return;
+    _aviso(result['message'] as String, error: result['success'] != true);
+    // Lo sincronizado cambia las listas de órdenes
+    context.read<OrderProvider>().loadOrdenes();
+  }
+
+  Future<void> _cerrarTurno() async {
+    final shiftProvider = context.read<ShiftProvider>();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cerrar Turno'),
+        content: const Text(
+            '¿Está seguro de cerrar el turno? Esto consolidará las ventas en el libro contable.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cerrar Turno'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final success = await shiftProvider.closeShift();
+    if (!mounted) return;
+    if (success) {
+      context.read<CartProvider>().clear();
+      context.read<OrderProvider>().clearCurrentOrden();
+      // No hay que navegar: al cerrarse el turno, AuthGate muestra la pantalla de inicio
+      _aviso('Turno cerrado exitosamente');
+    } else {
+      _aviso('Error al cerrar turno', error: true);
     }
   }
 
@@ -91,127 +220,56 @@ class _POSScreenState extends State<POSScreen> {
                 child: IconButton(
                   icon: const Icon(Icons.warning_amber, color: Colors.amber),
                   tooltip: 'Stock Bajo',
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Alertas de Stock'),
-                        content: Text('Hay $_stockBajoCount insumos con stock bajo.\n\nVerifica el inventario en el sistema web.'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Entendido'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Alertas de Stock'),
+                      content: Text(
+                          'Hay $_stockBajoCount insumos con stock bajo.\n\nVerifica el inventario en el sistema web.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Entendido'),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           IconButton(
             icon: const Icon(Icons.sync),
             tooltip: 'Sincronizar',
-            onPressed: () async {
-              final syncService = context.read<OrderProvider>().syncService;
-              try {
-                final result = await syncService.manualSync();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(result['message']),
-                      backgroundColor: result['success'] ? Colors.green : Colors.red,
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error de sincronización: $e')),
-                  );
-                }
-              }
-            },
+            onPressed: _sincronizar,
           ),
           IconButton(
             icon: const Icon(Icons.receipt_long),
             tooltip: 'Órdenes Abiertas',
-            onPressed: () async {
-              print('Botón Órdenes Abiertas presionado');
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const OpenOrdersScreen()),
-              );
-              // No llamar a _cargarOrdenSeleccionada aquí, solo cuando se selecciona "Editar Comanda"
-            },
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const OpenOrdersScreen()),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.archive),
             tooltip: 'Órdenes Cerradas',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ClosedOrdersScreen()),
-              );
-            },
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ClosedOrdersScreen()),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.close),
             tooltip: 'Cerrar Turno',
-            onPressed: () async {
-              final shiftProvider = context.read<ShiftProvider>();
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Cerrar Turno'),
-                  content: const Text('¿Está seguro de cerrar el turno? Esto consolidará las ventas en el libro contable.'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancelar'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Cerrar Turno'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (confirmed == true && mounted) {
-                final success = await shiftProvider.closeShift();
-                if (success) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Turno cerrado exitosamente'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const InitialScreen()),
-                    );
-                  }
-                } else if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Error al cerrar turno'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
+            onPressed: _cerrarTurno,
           ),
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Configuración',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ConfigScreen()),
-              );
-            },
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ConfigScreen()),
+            ),
           ),
         ],
       ),
@@ -223,11 +281,9 @@ class _POSScreenState extends State<POSScreen> {
               CategorySidebar(
                 categories: productProvider.categorias,
                 selectedCategory: productProvider.selectedCategoria,
-                onCategorySelected: (categoria) {
-                  productProvider.filterByCategoria(categoria);
-                },
+                onCategorySelected: productProvider.filterByCategoria,
               ),
-              
+
               // Grid de Productos (Centro)
               Expanded(
                 flex: 3,
@@ -235,7 +291,6 @@ class _POSScreenState extends State<POSScreen> {
                   color: Colors.grey[100],
                   child: Column(
                     children: [
-                      // Barra de búsqueda
                       Padding(
                         padding: const EdgeInsets.all(16.0),
                         child: TextField(
@@ -248,13 +303,9 @@ class _POSScreenState extends State<POSScreen> {
                             filled: true,
                             fillColor: Colors.white,
                           ),
-                          onChanged: (query) {
-                            productProvider.searchProductos(query);
-                          },
+                          onChanged: productProvider.searchProductos,
                         ),
                       ),
-                      
-                      // Grid de productos
                       Expanded(
                         child: productProvider.isLoading
                             ? const Center(child: CircularProgressIndicator())
@@ -271,7 +322,8 @@ class _POSScreenState extends State<POSScreen> {
                                   )
                                 : GridView.builder(
                                     padding: const EdgeInsets.all(16),
-                                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                    gridDelegate:
+                                        const SliverGridDelegateWithFixedCrossAxisCount(
                                       crossAxisCount: 3,
                                       crossAxisSpacing: 16,
                                       mainAxisSpacing: 16,
@@ -282,9 +334,7 @@ class _POSScreenState extends State<POSScreen> {
                                       final producto = productProvider.productos[index];
                                       return ProductCard(
                                         producto: producto,
-                                        onTap: () {
-                                          cartProvider.addItem(producto);
-                                        },
+                                        onTap: () => cartProvider.addItem(producto),
                                       );
                                     },
                                   ),
@@ -293,369 +343,91 @@ class _POSScreenState extends State<POSScreen> {
                   ),
                 ),
               ),
-              
-              // Panel del Carrito (Derecha)
+
+              // Panel del Carrito (Derecha). Los cambios del carrito no se
+              // guardan ni se imprimen hasta "Enviar a Cocina" o "Cobrar".
               CartPanel(
                 cartItems: cartProvider.items,
                 subtotal: cartProvider.subtotal,
                 impuesto: cartProvider.impuesto,
                 total: cartProvider.total,
                 itemCount: cartProvider.itemCount,
+                aplicaIva: cartProvider.aplicaIva,
                 selectedCliente: orderProvider.selectedCliente,
-                isNewCommand: orderProvider.currentOrden == null, // True si es nueva comanda
+                ordenEnEdicion: orderProvider.currentOrden?.numeroRecibo,
+                busy: _busy,
                 onClienteSelected: () async {
                   final cliente = await Navigator.push<Cliente?>(
                     context,
                     MaterialPageRoute(builder: (_) => const ClientSelectorScreen()),
                   );
-                  if (cliente != null) {
-                    orderProvider.selectCliente(cliente);
-                  }
+                  if (cliente != null) orderProvider.selectCliente(cliente);
                 },
                 onClearCart: () {
                   cartProvider.clear();
-                  orderProvider.clearCliente();
+                  orderProvider.clearCurrentOrden();
                 },
-                onRemoveItem: (productoId) {
-                  cartProvider.removeItem(productoId);
-                },
-                onUpdateCantidad: (productoId, cantidad) {
-                  cartProvider.updateCantidad(productoId, cantidad);
-                  
-                  // Si hay una orden existente, actualizarla en tiempo real
-                  if (orderProvider.currentOrden != null) {
-                    _actualizarOrdenEnTiempoReal(cartProvider, orderProvider);
-                  }
-                },
-                onSendToKitchen: () async {
-                  // PASO 4: Validación de cliente
-                  if (orderProvider.selectedCliente == null) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Debe seleccionar un cliente antes de enviar la comanda'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                    return;
-                  }
-
-                  // PASO 4: Modal de descripción/exigencias del cliente
-                  String? notasCliente;
-                  if (mounted) {
-                    notasCliente = await showDialog<String>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Notas del Cliente'),
-                        content: TextField(
-                          decoration: const InputDecoration(
-                            hintText: 'Ej: Sin cebolla, Término medio, etc.',
-                            border: OutlineInputBorder(),
-                          ),
-                          maxLines: 3,
-                          onChanged: (value) => notasCliente = value,
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, ''),
-                            child: const Text('Omitir'),
-                          ),
-                          ElevatedButton(
-                            onPressed: () => Navigator.pop(context, notasCliente),
-                            child: const Text('Aceptar'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  if (orderProvider.currentOrden == null) {
-                    final config = context.read<ConfigProvider>().config;
-                    if (config == null) return;
-
-                    await orderProvider.createNewOrden(
-                      orderProvider.selectedCliente,
-                      config.tasaCambio,
-                    );
-
-                    // Esperar un momento para que el provider se actualice
-                    await Future.delayed(const Duration(milliseconds: 100));
-                  }
-
-                  if (orderProvider.currentOrden == null) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Error: No se pudo crear la orden')),
-                      );
-                    }
-                    return;
-                  }
-
-                  // Actualizar notas de la orden
-                  if (notasCliente != null && notasCliente!.isNotEmpty) {
-                    orderProvider.updateOrdenNotas(notasCliente!);
-                  }
-
-                  await orderProvider.updateOrden(cartProvider.toDetallesOrden(orderProvider.currentOrden!.id));
-
-                  // PASO 4: Modal de previa antes de enviar
-                  final confirmar = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Confirmar Comanda'),
-                      content: const Text('¿Desea enviar esta comanda a cocina?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Modificar'),
-                        ),
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: const Text('Confirmar'),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  if (confirmar != true) return;
-
-                  try {
-                    await orderProvider.sendToKitchen();
-                    cartProvider.clear();
-                    orderProvider.clearCliente();
-
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Comanda enviada a cocina')),
-                      );
-                    }
-                  } catch (e) {
-                    // Handle Web simulation
-                    if (e.toString().contains('WEB_SIMULATION:kitchen_command')) {
-                      final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-                      final detalles = detallesBox.values
-                          .where((d) => orderProvider.currentOrden!.detalleIds.contains(d.id) && d.isNew)
-                          .toList();
-                      
-                      await TicketPreviewModal.show(
-                        context: context,
-                        orden: orderProvider.currentOrden!,
- detalles: detalles,
-                        tipoTicket: 'comanda',
-                        tasaCambio: context.read<ConfigProvider>().config?.tasaCambio ?? 36.5,
-                      );
-                      
-                      // Marcar como impresión
-                      for (var detalle in detalles) {
-                        final updated = detalle.copyWith(isNew: false);
-                        await detallesBox.put(detalle.id, updated);
-                      }
-                      
-                      // Limpiar notas del cliente después de imprimir
-                      await orderProvider.clearOrdenNotas();
-                      
-                      cartProvider.clear();
-                    }
-                  }
-                },
-                onPrintPreCuenta: () async {
-                  final config = context.read<ConfigProvider>().config;
-                  if (config == null) return;
-
-                  if (orderProvider.currentOrden == null) {
-                    await orderProvider.createNewOrden(
-                      orderProvider.selectedCliente,
-                      config.tasaCambio,
-                    );
-
-                    // Esperar un momento para que el provider se actualice
-                    await Future.delayed(const Duration(milliseconds: 100));
-                  }
-
-                  if (orderProvider.currentOrden == null) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Error: No se pudo crear la orden')),
-                      );
-                    }
-                    return;
-                  }
-
-                  await orderProvider.updateOrden(cartProvider.toDetallesOrden(orderProvider.currentOrden!.id));
-                  
-                  try {
-                    await orderProvider.printPreCuenta(config.tasaCambio);
-                    
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Pre-cuenta impresa')),
-                      );
-                    }
-                  } catch (e) {
-                    // Handle Web simulation
-                    if (e.toString().contains('WEB_SIMULATION:pre_cuenta')) {
-                      final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-                      final detalles = detallesBox.values
-                          .where((d) => orderProvider.currentOrden!.detalleIds.contains(d.id))
-                          .toList();
-                      
-                      await TicketPreviewModal.show(
-                        context: context,
-                        orden: orderProvider.currentOrden!,
-                        detalles: detalles,
-                        tipoTicket: 'pre_cuenta',
-                        tasaCambio: config.tasaCambio,
-                      );
-                    }
-                  }
-                },
-                onCobrar: (metodoPago, aplicaIva, {montoEntregado, referencia}) async {
-                  final config = context.read<ConfigProvider>().config;
-                  if (config == null) return;
-
-                  // Set IVA status in cart provider
-                  cartProvider.setAplicaIva(aplicaIva);
-
-                  // CRITICAL FIX: Solo crear nueva orden si no existe una actual
-                  if (orderProvider.currentOrden == null) {
-                    await orderProvider.createNewOrden(
-                      orderProvider.selectedCliente,
-                      config.tasaCambio,
-                    );
-
-                    // Esperar un momento para que el provider se actualice
-                    await Future.delayed(const Duration(milliseconds: 100));
-                  }
-
-                  if (orderProvider.currentOrden == null) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Error: No se pudo crear la orden')),
-                      );
-                    }
-                    return;
-                  }
-
-                  await orderProvider.updateOrden(cartProvider.toDetallesOrden(orderProvider.currentOrden!.id));
-
-                  // PASO 6: Cerrar orden con información de pago
-                  await orderProvider.closeOrden(
-                    metodoPago: metodoPago,
-                    montoEntregado: montoEntregado,
-                    referencia: referencia,
-                  );
-
-                  // Para Web, siempre usar el modo de simulación para mostrar el modal
-                  if (kIsWeb) {
-                    final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-                    final detalles = detallesBox.values
-                        .where((d) => orderProvider.currentOrden!.detalleIds.contains(d.id))
-                        .toList();
-
-                    final result = await TicketPreviewModal.show(
-                      context: context,
-                      orden: orderProvider.currentOrden!,
-                      detalles: detalles,
-                      tipoTicket: 'final',
-                      tasaCambio: config.tasaCambio,
-                      metodoPago: metodoPago,
-                    );
-
-                    if (result == true) {
-                      // User confirmed "print", complete the order
-                      await orderProvider.closeOrdenConIva(metodoPago, config.tasaCambio, aplicaIva);
-                      cartProvider.clear();
-
-                      // Mostrar advertencias de stock si hay
-                      if (orderProvider.stockWarnings.isNotEmpty && mounted) {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Advertencias de Stock'),
-                            content: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: orderProvider.stockWarnings.map((warning) => 
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8.0),
-                                  child: Text('⚠️ $warning'),
-                                )
-                              ).toList(),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () {
-                                  orderProvider.clearStockWarnings();
-                                  Navigator.of(context).pop();
-                                },
-                                child: const Text('Entendido'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Venta completada')),
-                        );
-                      }
-                    }
-                  } else {
-                    // Para móvil, usar el flujo normal
-                    try {
-                      await orderProvider.closeOrdenConIva(metodoPago, config.tasaCambio, aplicaIva);
-                      cartProvider.clear();
-
-                      // Mostrar advertencias de stock si hay
-                      if (orderProvider.stockWarnings.isNotEmpty && mounted) {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Advertencias de Stock'),
-                            content: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: orderProvider.stockWarnings.map((warning) => 
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8.0),
-                                  child: Text('⚠️ $warning'),
-                                )
-                              ).toList(),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () {
-                                  orderProvider.clearStockWarnings();
-                                  Navigator.of(context).pop();
-                                },
-                                child: const Text('Entendido'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Venta completada')),
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error: $e')),
-                        );
-                      }
-                    }
-                  }
-                },
+                onRemoveItem: cartProvider.removeItem,
+                onUpdateCantidad: cartProvider.updateCantidad,
+                onAplicaIvaChanged: cartProvider.setAplicaIva,
+                onSendToKitchen: _enviarACocina,
+                onPrintPreCuenta: _imprimirPreCuenta,
+                onCobrar: _cobrar,
               ),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+/// Diálogo de notas del cliente. Tiene su propio controlador: antes el texto
+/// se guardaba en una variable capturada por el builder y "Aceptar" devolvía
+/// el valor equivocado.
+class _NotasDialog extends StatefulWidget {
+  const _NotasDialog();
+
+  @override
+  State<_NotasDialog> createState() => _NotasDialogState();
+}
+
+class _NotasDialogState extends State<_NotasDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Notas del Cliente'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          hintText: 'Ej: Sin cebolla, Término medio, etc.',
+          border: OutlineInputBorder(),
+        ),
+        maxLines: 3,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, ''),
+          child: const Text('Omitir'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const Text('Aceptar'),
+        ),
+      ],
     );
   }
 }

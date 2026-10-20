@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/config_provider.dart';
-import '../providers/bluetooth_provider.dart';
 import '../providers/auth_provider.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import '../providers/bluetooth_provider.dart';
+import '../providers/config_provider.dart';
+import '../providers/order_provider.dart';
 
 class ConfigScreen extends StatefulWidget {
   const ConfigScreen({super.key});
@@ -15,25 +15,96 @@ class ConfigScreen extends StatefulWidget {
 class _ConfigScreenState extends State<ConfigScreen> {
   bool _isCheckingConnection = false;
   bool _isConnected = false;
+  bool _isSyncing = false;
+
+  // Los controladores viven en el State. Antes se creaban dentro de build(), de
+  // modo que cada reconstrucción reiniciaba el texto y el cursor mientras se
+  // escribía (y cada letra guardaba la configuración).
+  final _tasaController = TextEditingController();
+  final _urlController = TextEditingController();
+  bool _camposCargados = false;
+
+  @override
+  void dispose() {
+    _tasaController.dispose();
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  /// Rellena los campos una sola vez, cuando la configuración ya está cargada.
+  void _cargarCampos(ConfigProvider provider) {
+    final config = provider.config;
+    if (_camposCargados || config == null) return;
+    _camposCargados = true;
+    _tasaController.text = config.tasaCambio.toString();
+    _urlController.text = config.apiUrl;
+  }
 
   Future<void> _checkConnection() async {
     setState(() => _isCheckingConnection = true);
 
+    var connected = false;
     try {
-      final connected = await Provider.of<ConfigProvider>(context, listen: false)
-          .checkConnection();
-      setState(() => _isConnected = connected);
-    } catch (e) {
-      setState(() => _isConnected = false);
-    } finally {
-      setState(() => _isCheckingConnection = false);
+      connected = await context.read<ConfigProvider>().checkConnection();
+    } catch (_) {
+      connected = false;
     }
+    if (!mounted) return;
+    setState(() {
+      _isConnected = connected;
+      _isCheckingConnection = false;
+    });
   }
 
   @override
   void initState() {
     super.initState();
-    _checkConnection();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final config = context.read<ConfigProvider>();
+      // Esta pantalla también se abre desde el inicio (sin turno), donde la
+      // configuración todavía no se había cargado y quedaba un spinner infinito.
+      if (config.config == null) config.loadConfig();
+      _checkConnection();
+    });
+  }
+
+  void _mostrar(String texto, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(texto), backgroundColor: error ? Colors.red : null),
+    );
+  }
+
+  Future<void> _guardarTasa(ConfigProvider provider) async {
+    final tasa = double.tryParse(_tasaController.text.trim().replaceAll(',', '.'));
+    if (tasa == null || tasa <= 0) {
+      _mostrar('Ingrese una tasa válida', error: true);
+      return;
+    }
+    await provider.updateTasaCambio(tasa);
+    if (mounted) _mostrar('Tasa guardada');
+  }
+
+  Future<void> _guardarUrl(ConfigProvider provider) async {
+    final url = _urlController.text.trim();
+    final valida = Uri.tryParse(url);
+    if (valida == null || !valida.hasScheme || valida.host.isEmpty) {
+      _mostrar('Ingrese una URL válida, por ejemplo http://192.168.1.100:8000/api',
+          error: true);
+      return;
+    }
+    await provider.updateApiUrl(url);
+    if (mounted) await _checkConnection();
+  }
+
+  Future<void> _sincronizarTodo() async {
+    setState(() => _isSyncing = true);
+    try {
+      final result = await context.read<OrderProvider>().syncService.manualSync();
+      if (!mounted) return;
+      _mostrar(result['message'] as String, error: result['success'] != true);
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
   }
 
   @override
@@ -46,10 +117,26 @@ class _ConfigScreenState extends State<ConfigScreen> {
       body: Consumer3<ConfigProvider, BluetoothProvider, AuthProvider>(
         builder: (context, configProvider, bluetoothProvider, authProvider, _) {
           final config = configProvider.config;
-          
+
           if (config == null) {
-            return const Center(child: CircularProgressIndicator());
+            if (configProvider.isLoading) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(configProvider.error ?? 'No se pudo cargar la configuración'),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: configProvider.loadConfig,
+                    child: const Text('Reintentar'),
+                  ),
+                ],
+              ),
+            );
           }
+          _cargarCampos(configProvider);
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -67,28 +154,33 @@ class _ConfigScreenState extends State<ConfigScreen> {
                         prefixText: '\$1 = Bs ',
                       ),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      controller: TextEditingController(
-                        text: config.tasaCambio.toString(),
-                      ),
-                      onChanged: (value) {
-                        final tasa = double.tryParse(value);
-                        if (tasa != null && tasa > 0) {
-                          configProvider.updateTasaCambio(tasa);
-                        }
-                      },
+                      controller: _tasaController,
                     ),
                     const SizedBox(height: 8),
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        await configProvider.syncFromServer();
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Tasa sincronizada del servidor')),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.sync),
-                      label: const Text('Sincronizar del Servidor'),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _guardarTasa(configProvider),
+                            icon: const Icon(Icons.save),
+                            label: const Text('Guardar'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              await configProvider.syncFromServer();
+                              if (!mounted) return;
+                              final nueva = configProvider.config?.tasaCambio;
+                              if (nueva != null) _tasaController.text = nueva.toString();
+                              _mostrar('Tasa sincronizada del servidor');
+                            },
+                            icon: const Icon(Icons.sync),
+                            label: const Text('Del Servidor'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -108,21 +200,26 @@ class _ConfigScreenState extends State<ConfigScreen> {
                           child: TextField(
                             decoration: InputDecoration(
                               labelText: 'URL del Servidor',
-                              border: OutlineInputBorder(),
+                              border: const OutlineInputBorder(),
                               suffixIcon: _buildConnectionIcon(),
                             ),
-                            controller: TextEditingController(
-                              text: config.apiUrl,
-                            ),
-                            onChanged: (value) {
-                              configProvider.updateApiUrl(value);
-                            },
+                            controller: _urlController,
+                            keyboardType: TextInputType.url,
                           ),
                         ),
                         const SizedBox(width: 8),
                         IconButton(
+                          icon: const Icon(Icons.save),
+                          onPressed: () => _guardarUrl(configProvider),
+                          tooltip: 'Guardar URL',
+                        ),
+                        IconButton(
                           icon: _isCheckingConnection
-                              ? const CircularProgressIndicator(strokeWidth: 2)
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
                               : const Icon(Icons.refresh),
                           onPressed: _isCheckingConnection ? null : _checkConnection,
                           tooltip: 'Verificar conexión',
@@ -136,19 +233,6 @@ class _ConfigScreenState extends State<ConfigScreen> {
                         color: _isConnected ? Colors.green : Colors.red,
                         fontWeight: FontWeight.bold,
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      decoration: const InputDecoration(
-                        labelText: 'Token de API (opcional)',
-                        border: OutlineInputBorder(),
-                      ),
-                      controller: TextEditingController(
-                        text: config.apiToken,
-                      ),
-                      onChanged: (value) {
-                        configProvider.updateApiToken(value);
-                      },
                     ),
                   ],
                 ),
@@ -203,16 +287,14 @@ class _ConfigScreenState extends State<ConfigScreen> {
                 child: Column(
                   children: [
                     ElevatedButton.icon(
-                      onPressed: () async {
-                        final syncService = configProvider;
-                        // Aquí se implementaría la sincronización completa
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Sincronización iniciada...')),
-                          );
-                        }
-                      },
-                      icon: const Icon(Icons.cloud_sync),
+                      onPressed: _isSyncing ? null : _sincronizarTodo,
+                      icon: _isSyncing
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.cloud_sync),
                       label: const Text('Sincronizar Todo'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
@@ -259,15 +341,9 @@ class _ConfigScreenState extends State<ConfigScreen> {
                           ),
                         );
 
-                        if (confirmed == true && mounted) {
-                          await authProvider.logout();
-                          if (mounted) {
-                            Navigator.of(context).pushNamedAndRemoveUntil(
-                              '/login',
-                              (route) => false,
-                            );
-                          }
-                        }
+                        // logout() vuelve solo a la raíz de la app (AuthGate → login).
+                        // La ruta '/login' no existe, por eso fallaba antes.
+                        if (confirmed == true) await authProvider.logout();
                       },
                       icon: const Icon(Icons.logout),
                       label: const Text('Cerrar Sesión'),
@@ -355,7 +431,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
                           subtitle: Text(device.id.toString()),
                           onTap: () async {
                             final success = await provider.connectToDevice(device);
-                            if (success && mounted) {
+                            if (success && context.mounted) {
                               Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Impresora conectada')),

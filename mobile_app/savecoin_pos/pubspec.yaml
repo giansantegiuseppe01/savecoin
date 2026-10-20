@@ -47,12 +47,14 @@ dependencies:
 
   # POS Printer
   esc_pos_utils: ^1.1.0
-  esc_pos_printer: ^4.1.0
 
   # Network
   http: ^1.2.0
   cached_network_image: ^3.3.1
   connectivity_plus: ^5.0.2
+
+  # Almacenamiento seguro del token (Keystore / Keychain)
+  flutter_secure_storage: ^9.2.2
 
   # Permissions
   permission_handler: ^11.3.0

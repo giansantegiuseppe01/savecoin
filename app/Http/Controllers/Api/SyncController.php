@@ -54,23 +54,14 @@ class SyncController extends Controller
                 $ordenExistente = Orden::where('numero_recibo', $ordenData['numero_recibo'])->first();
 
                 if (! $ordenExistente) {
-                    // Crear o buscar cliente si es local
+                    // La app sincroniza primero los clientes locales y manda el ID real del
+                    // servidor. Antes, con is_local = true, ese ID se tomaba como una cédula y
+                    // se creaba un cliente duplicado por cada orden.
                     $clienteId = null;
-                    // Ojo con la precedencia: sin paréntesis, "&& ... ?? false" lanzaba
-                    // "Undefined array key" cuando la app no enviaba is_local.
-                    if (! empty($ordenData['cliente_id']) && ($ordenData['is_local'] ?? false)) {
-                        $cliente = Cliente::where('cedula', $ordenData['cliente_id'])->first();
-                        if (! $cliente) {
-                            $cliente = Cliente::create([
-                                'nombre' => explode(' ', $ordenData['cliente_nombre'])[0] ?? 'Cliente',
-                                'apellido' => explode(' ', $ordenData['cliente_nombre'])[1] ?? '',
-                                'cedula' => $ordenData['cliente_id'],
-                                'is_local' => true,
-                            ]);
-                        }
-                        $clienteId = $cliente->id;
-                    } elseif (! empty($ordenData['cliente_id'])) {
-                        $clienteId = $ordenData['cliente_id'];
+                    $clienteRef = (string) ($ordenData['cliente_id'] ?? '');
+                    if ($clienteRef !== '' && ctype_digit($clienteRef)
+                        && Cliente::whereKey((int) $clienteRef)->exists()) {
+                        $clienteId = (int) $clienteRef;
                     }
 
                     // Crear orden

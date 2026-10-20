@@ -1,11 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/producto.dart';
-import '../services/api_service.dart';
 import '../services/sync_service.dart';
 
 class ProductProvider with ChangeNotifier {
-  final ApiService _apiService = ApiService();
   final SyncService _syncService = SyncService();
   
   List<Producto> _productos = [];
@@ -15,7 +13,6 @@ class ProductProvider with ChangeNotifier {
   String? _error;
 
   List<Producto> get productos => _filteredProductos;
-  List<Producto> get allProductos => _productos;
   String? get selectedCategoria => _selectedCategoria;
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -64,10 +61,12 @@ class ProductProvider with ChangeNotifier {
     if (query.isEmpty) {
       _applyFilter();
     } else {
+      final q = query.toLowerCase();
       _filteredProductos = _productos.where((p) {
-        return p.nombre.toLowerCase().contains(query.toLowerCase()) ||
-               p.codigo.toLowerCase().contains(query.toLowerCase()) ||
-               (p.descripcion?.toLowerCase().contains(query.toLowerCase()) ?? false);
+        return p.activo &&
+            (p.nombre.toLowerCase().contains(q) ||
+                p.codigo.toLowerCase().contains(q) ||
+                (p.descripcion?.toLowerCase().contains(q) ?? false));
       }).toList();
     }
     notifyListeners();
@@ -83,15 +82,15 @@ class ProductProvider with ChangeNotifier {
     }
   }
 
-  Producto? getProductoById(String id) {
-    try {
-      return _productos.firstWhere((p) => p.id == id);
-    } catch (e) {
-      return null;
-    }
-  }
-
   Future<void> refresh() async {
     await loadProductos();
+  }
+
+  /// Vuelve a leer el catálogo desde Hive, sin llamar al servidor (se usa
+  /// después de una sincronización que ya lo actualizó).
+  void reloadLocal() {
+    _productos = Hive.box<Producto>('productos').values.toList();
+    _applyFilter();
+    notifyListeners();
   }
 }

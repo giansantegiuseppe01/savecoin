@@ -69,7 +69,7 @@ factory Cliente.fromJson(Map<String, dynamic> json) {
     };
   }
 
-  String get nombreCompleto => '$nombre $apellido';
+  String get nombreCompleto => '$nombre $apellido'.trim();
 
   Cliente copyWith({
     String? nombre,

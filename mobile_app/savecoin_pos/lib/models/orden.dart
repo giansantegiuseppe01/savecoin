@@ -129,8 +129,28 @@ class Orden extends HiveObject {
           : null,
       isLocal: false,
       aplicaIva: json['aplica_iva'] as bool? ?? false,
-      detalleIds: (json['detalle_ids'] as List<dynamic>?)?.cast<String>() ?? [],
+      detalleIds: _parseDetalleIds(json),
     );
+  }
+
+  /// IDs de los detalles: `detalle_ids` (guardado local) o, si no existe, los
+  /// `detalles` completos que devuelve el servidor.
+  static List<String> _parseDetalleIds(Map<String, dynamic> json) {
+    final ids = json['detalle_ids'];
+    if (ids is List) {
+      return ids.map((e) => e.toString()).toList();
+    }
+
+    final detalles = json['detalles'];
+    if (detalles is List) {
+      return detalles
+          .whereType<Map>()
+          .map((d) => d['id']?.toString())
+          .whereType<String>()
+          .toList();
+    }
+
+    return [];
   }
 
   Map<String, dynamic> toJson() {
@@ -192,6 +212,7 @@ class Orden extends HiveObject {
     String? turno,
     DateTime? fechaHora,
     String? notas,
+    bool clearNotas = false, // true = dejar las notas en null (con `notas: null` no se puede)
     DateTime? syncedAt,
     bool? isLocal,
     bool? aplicaIva,
@@ -212,7 +233,7 @@ class Orden extends HiveObject {
       metodoPago: metodoPago ?? this.metodoPago,
       turno: turno ?? this.turno,
       fechaHora: fechaHora ?? this.fechaHora,
-      notas: notas ?? this.notas,
+      notas: clearNotas ? null : (notas ?? this.notas),
       syncedAt: syncedAt ?? this.syncedAt,
       isLocal: isLocal ?? this.isLocal,
       aplicaIva: aplicaIva ?? this.aplicaIva,

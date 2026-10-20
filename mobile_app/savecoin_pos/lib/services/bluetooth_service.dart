@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -5,13 +6,29 @@ import 'package:esc_pos_utils/esc_pos_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/orden.dart';
 import '../models/detalle_orden.dart';
+import '../utils/formatters.dart';
+import '../utils/log.dart';
 
+/// Conexión con la impresora Bluetooth. Es un único objeto compartido: antes
+/// cada pantalla/provider creaba el suyo, así que la impresora conectada en
+/// Configuración no existía para las demás y imprimir siempre fallaba.
 class BluetoothService {
+  static final BluetoothService _instance = BluetoothService._internal();
+
+  factory BluetoothService() => _instance;
+
+  BluetoothService._internal();
+
   BluetoothDevice? _connectedDevice;
   BluetoothCharacteristic? _printCharacteristic;
-  List<BluetoothDevice> _availableDevices = [];
+  final List<BluetoothDevice> _availableDevices = [];
   bool _isScanning = false;
   bool _isConnected = false;
+  int _chunkSize = 20;
+  StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
+
+  /// Lo asigna BluetoothProvider para refrescar la UI si la impresora se desconecta.
+  void Function()? onConnectionChanged;
 
   List<BluetoothDevice> get availableDevices => _availableDevices;
   bool get isScanning => _isScanning;
@@ -36,7 +53,7 @@ class BluetoothService {
     try {
       // Solicitar permisos si no se tienen
       if (await FlutterBluePlus.isSupported == false) {
-        print('Bluetooth no soportado');
+        logd('Bluetooth no soportado');
         return;
       }
 
@@ -57,7 +74,7 @@ class BluetoothService {
       await FlutterBluePlus.stopScan();
       await subscription.cancel();
     } catch (e) {
-      print('Error escaneando Bluetooth: $e');
+      logd('Error escaneando Bluetooth: $e');
     } finally {
       _isScanning = false;
     }
@@ -73,27 +90,45 @@ class BluetoothService {
       await device.connect();
       _connectedDevice = device;
       _isConnected = true;
+      _printCharacteristic = null;
+
+      // Si la impresora se apaga o se aleja, marcarla como desconectada
+      await _connectionSubscription?.cancel();
+      _connectionSubscription = device.connectionState.listen((state) {
+        if (state == BluetoothConnectionState.disconnected && _isConnected) {
+          _isConnected = false;
+          _printCharacteristic = null;
+          onConnectionChanged?.call();
+        }
+      });
 
       // Guardar MAC address
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('printer_mac', device.id.toString());
       await prefs.setString('printer_name', device.name);
 
-      // Descubrir servicios y características
+      // Descubrir servicios y buscar la primera característica de escritura
       final services = await device.discoverServices();
+      search:
       for (var service in services) {
         for (var characteristic in service.characteristics) {
           if (characteristic.properties.write ||
               characteristic.properties.writeWithoutResponse) {
             _printCharacteristic = characteristic;
-            break;
+            break search; // un simple `break` solo salía del bucle interno
           }
         }
       }
 
+      // BLE limita cada escritura al MTU (por defecto 23 bytes = 20 de datos)
+      _chunkSize = (device.mtuNow - 3).clamp(20, 200).toInt();
+
+      if (_printCharacteristic == null) {
+        _isConnected = false;
+      }
       return _printCharacteristic != null;
     } catch (e) {
-      print('Error conectando a dispositivo: $e');
+      logd('Error conectando a dispositivo: $e');
       _isConnected = false;
       return false;
     }
@@ -101,6 +136,9 @@ class BluetoothService {
 
   // Desconectar
   Future<void> disconnect() async {
+    await _connectionSubscription?.cancel();
+    _connectionSubscription = null;
+
     if (_connectedDevice != null) {
       await _connectedDevice!.disconnect();
       _connectedDevice = null;
@@ -130,7 +168,7 @@ class BluetoothService {
 
       return await connectToDevice(device);
     } catch (e) {
-      print('Error reconectando: $e');
+      logd('Error reconectando: $e');
       return false;
     }
   }
@@ -149,7 +187,7 @@ class BluetoothService {
     try {
       final profile = await CapabilityProfile.load();
       final generator = Generator(PaperSize.mm58, profile);
-      final printer = BluetoothPrinter(_printCharacteristic!);
+      final printer = _createPrinter();
 
       List<int> bytes = [];
 
@@ -201,7 +239,7 @@ class BluetoothService {
         // Marcar items modificados con asterisco
         final prefijo = detalle.fueModificado ? '* ' : '';
         bytes += generator.text(
-            '$prefijo${detalle.cantidad}x ${detalle.productoNombre}',
+            '$prefijo${formatCantidad(detalle.cantidad)}x ${detalle.productoNombre}',
             styles: PosStyles(bold: true));
         if (detalle.notas != null && detalle.notas!.isNotEmpty) {
           bytes += generator.text('Nota: ${detalle.notas}',
@@ -218,8 +256,7 @@ class BluetoothService {
 
       await printer.printBytes(Uint8List.fromList(bytes));
     } catch (e) {
-      throw Exception('Error imprimiendo comanda: $e');
-      throw Exception('Error al imprimir: $e');
+      throw Exception('Error al imprimir comanda: $e');
     }
   }
 
@@ -237,7 +274,7 @@ class BluetoothService {
     try {
       final profile = await CapabilityProfile.load();
       final generator = Generator(PaperSize.mm58, profile);
-      final printer = BluetoothPrinter(_printCharacteristic!);
+      final printer = _createPrinter();
 
       List<int> bytes = [];
 
@@ -258,7 +295,7 @@ class BluetoothService {
       for (var detalle in detalles) {
         bytes += generator.text('${detalle.productoNombre}');
         bytes += generator.text(
-            '${detalle.cantidad} x \$${detalle.precioUnitario.toStringAsFixed(2)} = \$${detalle.subtotal.toStringAsFixed(2)}',
+            '${formatCantidad(detalle.cantidad)} x \$${detalle.precioUnitario.toStringAsFixed(2)} = \$${detalle.subtotal.toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));
       }
 
@@ -285,7 +322,7 @@ class BluetoothService {
 
       await printer.printBytes(Uint8List.fromList(bytes));
     } catch (e) {
-      print('Error imprimiendo pre-cuenta: $e');
+      logd('Error imprimiendo pre-cuenta: $e');
       throw Exception('Error al imprimir: $e');
     }
   }
@@ -303,7 +340,7 @@ class BluetoothService {
     try {
       final profile = await CapabilityProfile.load();
       final generator = Generator(PaperSize.mm58, profile);
-      final printer = BluetoothPrinter(_printCharacteristic!);
+      final printer = _createPrinter();
 
       List<int> bytes = [];
 
@@ -324,7 +361,7 @@ class BluetoothService {
       for (var detalle in detalles) {
         bytes += generator.text('${detalle.productoNombre}');
         bytes += generator.text(
-            '${detalle.cantidad} x \$${detalle.precioUnitario.toStringAsFixed(2)}',
+            '${formatCantidad(detalle.cantidad)} x \$${detalle.precioUnitario.toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));
         if (detalle.notas != null && detalle.notas!.isNotEmpty) {
           bytes += generator.text('Nota: ${detalle.notas}',
@@ -338,7 +375,7 @@ class BluetoothService {
 
       await printer.printBytes(Uint8List.fromList(bytes));
     } catch (e) {
-      print('Error imprimiendo productos añadidos: $e');
+      logd('Error imprimiendo productos añadidos: $e');
       throw Exception('Error al imprimir: $e');
     }
   }
@@ -356,7 +393,7 @@ class BluetoothService {
     try {
       final profile = await CapabilityProfile.load();
       final generator = Generator(PaperSize.mm58, profile);
-      final printer = BluetoothPrinter(_printCharacteristic!);
+      final printer = _createPrinter();
 
       List<int> bytes = [];
 
@@ -377,7 +414,7 @@ class BluetoothService {
       for (var detalle in detalles) {
         bytes += generator.text('${detalle.productoNombre}');
         bytes += generator.text(
-            '${detalle.cantidad} x \$${detalle.precioUnitario.toStringAsFixed(2)}',
+            '${formatCantidad(detalle.cantidad)} x \$${detalle.precioUnitario.toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));
       }
 
@@ -387,7 +424,7 @@ class BluetoothService {
 
       await printer.printBytes(Uint8List.fromList(bytes));
     } catch (e) {
-      print('Error imprimiendo productos eliminados: $e');
+      logd('Error imprimiendo productos eliminados: $e');
       throw Exception('Error al imprimir: $e');
     }
   }
@@ -406,7 +443,7 @@ class BluetoothService {
     try {
       final profile = await CapabilityProfile.load();
       final generator = Generator(PaperSize.mm58, profile);
-      final printer = BluetoothPrinter(_printCharacteristic!);
+      final printer = _createPrinter();
 
       List<int> bytes = [];
 
@@ -427,7 +464,7 @@ class BluetoothService {
       for (var detalle in detalles) {
         bytes += generator.text('${detalle.productoNombre}');
         bytes += generator.text(
-            '${detalle.cantidad} x \$${detalle.precioUnitario.toStringAsFixed(2)} = \$${detalle.subtotal.toStringAsFixed(2)}',
+            '${formatCantidad(detalle.cantidad)} x \$${detalle.precioUnitario.toStringAsFixed(2)} = \$${detalle.subtotal.toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));
       }
 
@@ -462,59 +499,7 @@ class BluetoothService {
 
       await printer.printBytes(Uint8List.fromList(bytes));
     } catch (e) {
-      print('Error imprimiendo ticket: $e');
-      throw Exception('Error al imprimir: $e');
-    }
-  }
-
-  // Imprimir ticket de anulación para cocina/barra
-  Future<void> printAnulacionTicket(Orden orden, DetalleOrden detalle, double cantidadEliminada) async {
-    if (isWeb) {
-      // En Web, lanzar excepción para que la UI muestre el modal
-      throw Exception('WEB_SIMULATION:anulacion');
-    }
-
-    if (!isConnected || _printCharacteristic == null) {
-      throw Exception('Impresora no conectada');
-    }
-
-    try {
-      final profile = await CapabilityProfile.load();
-      final generator = Generator(PaperSize.mm58, profile);
-      final printer = BluetoothPrinter(_printCharacteristic!);
-
-      List<int> bytes = [];
-
-      bytes += generator.text('*** ANULACIÓN DE COMANDA ***',
-          styles: PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
-          ));
-      bytes += generator.hr();
-      bytes += generator.text('Orden: ${orden.numeroRecibo}',
-          styles: PosStyles(bold: true));
-      bytes += generator.text('Cliente: ${orden.clienteNombre}');
-      bytes += generator.text('Fecha: ${_formatDate(DateTime.now())}');
-      bytes += generator.hr();
-      bytes += generator.text('PRODUCTO ELIMINADO:',
-          styles: PosStyles(bold: true));
-      bytes += generator.hr();
-      bytes += generator.text(
-          '-${cantidadEliminada.toStringAsFixed(0)} ${detalle.productoNombre}',
-          styles: PosStyles(bold: true));
-      bytes += generator.text('Cantidad anterior: ${detalle.cantidad + cantidadEliminada}');
-      bytes += generator.text('Cantidad nueva: ${detalle.cantidad}');
-      bytes += generator.hr();
-      bytes += generator.text('--- FIN ANULACIÓN ---',
-          styles: PosStyles(align: PosAlign.center));
-      bytes += generator.feed(2);
-      bytes += generator.cut();
-
-      await printer.printBytes(Uint8List.fromList(bytes));
-    } catch (e) {
-      print('Error imprimiendo ticket de anulación: $e');
+      logd('Error imprimiendo ticket: $e');
       throw Exception('Error al imprimir: $e');
     }
   }
@@ -533,7 +518,7 @@ class BluetoothService {
     try {
       final profile = await CapabilityProfile.load();
       final generator = Generator(PaperSize.mm58, profile);
-      final printer = BluetoothPrinter(_printCharacteristic!);
+      final printer = _createPrinter();
 
       List<int> bytes = [];
 
@@ -560,7 +545,7 @@ class BluetoothService {
       for (var detalle in detalles) {
         bytes += generator.text('${detalle.productoNombre}');
         bytes += generator.text(
-            '${detalle.cantidad} x \$${detalle.precioUnitario.toStringAsFixed(2)} = \$${detalle.subtotal.toStringAsFixed(2)}',
+            '${formatCantidad(detalle.cantidad)} x \$${detalle.precioUnitario.toStringAsFixed(2)} = \$${detalle.subtotal.toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));
       }
 
@@ -595,14 +580,15 @@ class BluetoothService {
 
       await printer.printBytes(Uint8List.fromList(bytes));
     } catch (e) {
-      print('Error reimprimiendo ticket: $e');
+      logd('Error reimprimiendo ticket: $e');
       throw Exception('Error al reimprimir: $e');
     }
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-  }
+  String _formatDate(DateTime date) => formatFechaHora(date);
+
+  BluetoothPrinter _createPrinter() =>
+      BluetoothPrinter(_printCharacteristic!, chunkSize: _chunkSize);
 
   void dispose() {
     disconnect();
@@ -612,10 +598,23 @@ class BluetoothService {
 // Clase auxiliar para impresión Bluetooth
 class BluetoothPrinter {
   final BluetoothCharacteristic characteristic;
+  final int chunkSize;
 
-  BluetoothPrinter(this.characteristic);
+  BluetoothPrinter(this.characteristic, {this.chunkSize = 20});
 
+  /// Envía los bytes en trozos que quepan en el MTU. Un ticket completo mide
+  /// cientos de bytes y una sola escritura más grande que el MTU falla o se corta.
   Future<void> printBytes(Uint8List bytes) async {
-    await characteristic.write(bytes);
+    final withoutResponse = characteristic.properties.writeWithoutResponse;
+
+    for (var i = 0; i < bytes.length; i += chunkSize) {
+      final end = (i + chunkSize < bytes.length) ? i + chunkSize : bytes.length;
+      await characteristic.write(bytes.sublist(i, end), withoutResponse: withoutResponse);
+
+      if (withoutResponse) {
+        // Dar tiempo a la impresora a vaciar su buffer
+        await Future.delayed(const Duration(milliseconds: 20));
+      }
+    }
   }
 }

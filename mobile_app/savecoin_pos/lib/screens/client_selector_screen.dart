@@ -98,7 +98,7 @@ class _ClientSelectorScreenState extends State<ClientSelectorScreen> {
                       leading: CircleAvatar(
                         backgroundColor: Colors.blue[100],
                         child: Text(
-                          cliente.nombre[0].toUpperCase(),
+                          (cliente.nombre.isEmpty ? '?' : cliente.nombre[0]).toUpperCase(),
                           style: TextStyle(color: Colors.blue[700]),
                         ),
                       ),
@@ -213,13 +213,19 @@ class _ClientSelectorScreenState extends State<ClientSelectorScreen> {
                 isLocal: true,
               );
 
-              final success = await context.read<ClientProvider>().createCliente(nuevoCliente);
-              
-              if (success) {
-                Navigator.pop(context);
-                Navigator.pop(context, nuevoCliente);
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+
+              // Se usa el cliente que devuelve createCliente: si hubo conexión,
+              // tiene el ID del servidor (el original tiene un ID temporal).
+              final guardado =
+                  await context.read<ClientProvider>().createCliente(nuevoCliente);
+
+              if (guardado != null) {
+                navigator.pop(); // cierra el diálogo
+                navigator.pop(guardado); // vuelve al POS con el cliente
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(
+                messenger.showSnackBar(
                   const SnackBar(content: Text('Error al crear cliente')),
                 );
               }

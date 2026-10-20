@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/orden.dart';
 import '../models/detalle_orden.dart';
+import '../utils/constants.dart';
 
 class TicketPreviewModal extends StatelessWidget {
   final Orden orden;
@@ -203,7 +204,7 @@ class TicketPreviewModal extends StatelessWidget {
             _buildTotalRow('Subtotal:', '\$${orden.subtotal.toStringAsFixed(2)}'),
             // Solo mostrar impuesto si aplica IVA
             if (orden.aplicaIva) ...[
-              _buildTotalRow('Impuesto (16%):', '\$${orden.impuesto.toStringAsFixed(2)}'),
+              _buildTotalRow('Impuesto (${(kIvaRate * 100).round()}%):', '\$${orden.impuesto.toStringAsFixed(2)}'),
             ],
             const SizedBox(height: 4),
             _buildTotalRow(

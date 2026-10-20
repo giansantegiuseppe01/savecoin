@@ -1,29 +1,74 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:hive_flutter/hive_flutter.dart';
-import '../models/orden.dart';
-import '../models/detalle_orden.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 import '../models/cliente.dart';
-import '../models/configuracion.dart';
+import '../models/detalle_orden.dart';
+import '../models/orden.dart';
 import '../services/api_service.dart';
-import '../services/sync_service.dart';
 import '../services/bluetooth_service.dart';
 import '../services/comanda_change_service.dart';
+import '../services/sync_service.dart';
+import '../utils/constants.dart';
+import '../utils/log.dart';
+
+/// Ticket que la pantalla debe mostrar como vista previa (solo en Web, donde no
+/// hay impresora Bluetooth).
+class TicketPreview {
+  final Orden orden;
+  final List<DetalleOrden> detalles;
+
+  /// 'comanda', 'pre_cuenta' o 'final'
+  final String tipo;
+  final String? metodoPago;
+
+  const TicketPreview({
+    required this.orden,
+    required this.detalles,
+    required this.tipo,
+    this.metodoPago,
+  });
+}
+
+/// Resultado de una acción del POS (enviar comanda, cobrar, imprimir...).
+///
+/// [ok] indica si lo principal (guardar la orden / registrar el cobro) quedó
+/// hecho. Si la impresión falla pero la orden se guardó, [ok] es true y
+/// [mensaje] explica qué pasó: así no se avisa "venta completada" cuando no lo
+/// está, ni se pierde una venta por un problema de la impresora.
+class AccionResultado {
+  final bool ok;
+  final String? mensaje;
+  final TicketPreview? preview;
+  final List<String> advertencias;
+
+  const AccionResultado({
+    required this.ok,
+    this.mensaje,
+    this.preview,
+    this.advertencias = const [],
+  });
+}
+
+class _Impresion {
+  final bool simulada;
+  final String? error;
+  const _Impresion({this.simulada = false, this.error});
+  bool get ok => !simulada && error == null;
+}
 
 class OrderProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
   final SyncService _syncService = SyncService();
   final BluetoothService _bluetoothService = BluetoothService();
   final ComandaChangeService _changeService = ComandaChangeService();
-  
+
   List<Orden> _ordenesAbiertas = [];
   List<Orden> _ordenesCerradas = [];
   Orden? _currentOrden;
   Cliente? _selectedCliente;
   bool _isLoading = false;
   String? _error;
-  ComandaChange? _ultimoCambioDetectado;
-  List<String> _stockWarnings = [];
 
   List<Orden> get ordenesAbiertas => _ordenesAbiertas;
   List<Orden> get ordenesCerradas => _ordenesCerradas;
@@ -31,814 +76,99 @@ class OrderProvider with ChangeNotifier {
   Cliente? get selectedCliente => _selectedCliente;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  List<String> get stockWarnings => _stockWarnings;
   SyncService get syncService => _syncService;
-  ComandaChange? get ultimoCambioDetectado => _ultimoCambioDetectado;
 
-  // Helper para parsear números que pueden venir como String o num
-  double _parseNum(dynamic value) {
-    if (value == null) return 0.0;
-    if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
+  Box<Orden> get _ordenesBox => Hive.box<Orden>('ordenes');
+  Box<DetalleOrden> get _detallesBox => Hive.box<DetalleOrden>('detalles_orden');
+
+  // ---------------------------------------------------------------------------
+  // Lectura
+  // ---------------------------------------------------------------------------
+
+  /// Detalles (guardados en Hive) de una orden, en el orden de la comanda.
+  List<DetalleOrden> detallesDe(Orden orden) {
+    return orden.detalleIds
+        .map(_detallesBox.get)
+        .whereType<DetalleOrden>()
+        .toList();
   }
 
-  Future<void> loadOrdenesAbiertas() async {
+  /// Carga las órdenes del servidor (si hay conexión) y las combina con las que
+  /// están pendientes de enviar en este dispositivo. Reemplaza a las dos
+  /// funciones casi idénticas que había antes para abiertas y cerradas.
+  Future<void> loadOrdenes() async {
+    if (_isLoading) return;
     _isLoading = true;
     _error = null;
     notifyListeners();
 
+    Set<String>? idsServidor;
     try {
-      // Cargar órdenes abiertas desde el backend
       if (await _syncService.hasConnection) {
         try {
           final response = await _apiService.getOrdenes();
-          final ordenesData = response['data'] as List;
-          
-          final ordenes = <Orden>[];
-          final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-          
-          for (var ordenJson in ordenesData) {
-            // Procesar detalles de esta orden
-            final detallesBackend = ordenJson['detalles'] as List<dynamic>? ?? [];
-            for (var detalleJson in detallesBackend) {
-              final detalle = DetalleOrden(
-                id: detalleJson['id'].toString(),
-                ordenId: ordenJson['id'].toString(),
-                productoId: detalleJson['producto_id'].toString(),
-                productoNombre: detalleJson['producto_nombre'] as String? ?? '',
-                cantidad: _parseNum(detalleJson['cantidad']),
-                precioUnitario: _parseNum(detalleJson['precio_unitario']),
-                isNew: false,
-              );
-              detallesBox.put(detalle.id, detalle);
+          final data = response['data'];
+          if (data is List) {
+            idsServidor = <String>{};
+            for (final item in data.whereType<Map>()) {
+              final json = Map<String, dynamic>.from(item);
+              final id = Orden.fromJson(json).id;
+              idsServidor.add(id);
+              // Una orden con cambios sin enviar es más reciente que la del servidor
+              if (_ordenesBox.get(id)?.isLocal ?? false) continue;
+              await _guardarDesdeServidor(json);
             }
-            
-            // Crear orden con detalleIds correctos
-            final orden = Orden.fromJson(ordenJson);
-            final detalleIds = detallesBackend.map((d) => d['id'].toString()).toList();
-            
-            // Recalcular totales basados en los detalles
-            double subtotal = 0;
-            for (var detalleJson in detallesBackend) {
-              subtotal += _parseNum(detalleJson['subtotal']);
-            }
-            
-            final ordenConDetalles = orden.copyWith(
-              detalleIds: detalleIds,
-              subtotal: subtotal,
-              total: _parseNum(ordenJson['total']) > 0 ? _parseNum(ordenJson['total']) : subtotal,
-            );
-            ordenes.add(ordenConDetalles);
-          }
-          
-          _ordenesAbiertas = ordenes.where((o) => o.estado == 'abierta').toList();
-          
-          // Actualizar Hive con las órdenes del backend
-          final ordenesBox = Hive.box<Orden>('ordenes');
-          for (var orden in ordenes) {
-            await ordenesBox.put(orden.id, orden);
           }
         } catch (e) {
-          print('Error cargando órdenes del backend: $e');
-          // Fallback a Hive
-          final ordenesBox = Hive.box<Orden>('ordenes');
-          _ordenesAbiertas = ordenesBox.values
-              .where((o) => o.estado == 'abierta')
-              .toList()
-            ..sort((a, b) => b.fechaHora.compareTo(a.fechaHora));
+          logd('No se pudieron cargar las órdenes del servidor: $e');
+          idsServidor = null;
         }
-      } else {
-        // Sin conexión, cargar desde Hive
-        final ordenesBox = Hive.box<Orden>('ordenes');
-        _ordenesAbiertas = ordenesBox.values
-            .where((o) => o.estado == 'abierta')
-            .toList()
-          ..sort((a, b) => b.fechaHora.compareTo(a.fechaHora));
       }
-      
-      _isLoading = false;
-      notifyListeners();
+      _refrescarListas(idsServidor);
     } catch (e) {
       _error = e.toString();
+    } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  Future<void> loadOrdenesCerradas() async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+  Future<void> loadOrdenesAbiertas() => loadOrdenes();
 
-    try {
-      // Cargar órdenes cerradas desde el backend
-      if (await _syncService.hasConnection) {
-        try {
-          final response = await _apiService.getOrdenes();
-          final ordenesData = response['data'] as List;
-          
-          final ordenes = <Orden>[];
-          final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-          
-          for (var ordenJson in ordenesData) {
-            // Procesar detalles de esta orden
-            final detallesBackend = ordenJson['detalles'] as List<dynamic>? ?? [];
-            for (var detalleJson in detallesBackend) {
-              final detalle = DetalleOrden(
-                id: detalleJson['id'].toString(),
-                ordenId: ordenJson['id'].toString(),
-                productoId: detalleJson['producto_id'].toString(),
-                productoNombre: detalleJson['producto_nombre'] as String? ?? '',
-                cantidad: _parseNum(detalleJson['cantidad']),
-                precioUnitario: _parseNum(detalleJson['precio_unitario']),
-                isNew: false,
-              );
-              detallesBox.put(detalle.id, detalle);
-            }
-            
-            // Crear orden con detalleIds correctos
-            final orden = Orden.fromJson(ordenJson);
-            final detalleIds = detallesBackend.map((d) => d['id'].toString()).toList();
-            
-            // Recalcular totales basados en los detalles
-            double subtotal = 0;
-            for (var detalleJson in detallesBackend) {
-              subtotal += _parseNum(detalleJson['subtotal']);
-            }
-            
-            final ordenConDetalles = orden.copyWith(
-              detalleIds: detalleIds,
-              subtotal: subtotal,
-              total: _parseNum(ordenJson['total']) > 0 ? _parseNum(ordenJson['total']) : subtotal,
-            );
-            ordenes.add(ordenConDetalles);
-          }
-          
-          _ordenesCerradas = ordenes.where((o) => o.estado == 'cerrada').toList();
-          
-          // Actualizar Hive con las órdenes del backend
-          final ordenesBox = Hive.box<Orden>('ordenes');
-          for (var orden in ordenes) {
-            await ordenesBox.put(orden.id, orden);
-          }
-        } catch (e) {
-          print('Error cargando órdenes del backend: $e');
-          // Fallback a Hive
-          final ordenesBox = Hive.box<Orden>('ordenes');
-          _ordenesCerradas = ordenesBox.values
-              .where((o) => o.estado == 'cerrada')
-              .toList()
-            ..sort((a, b) => b.fechaHora.compareTo(a.fechaHora));
-        }
-      } else {
-        // Sin conexión, cargar desde Hive
-        final ordenesBox = Hive.box<Orden>('ordenes');
-        _ordenesCerradas = ordenesBox.values
-            .where((o) => o.estado == 'cerrada')
-            .toList()
-          ..sort((a, b) => b.fechaHora.compareTo(a.fechaHora));
-      }
-      
-      _isLoading = false;
-      notifyListeners();
-    } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
-    }
+  Future<void> loadOrdenesCerradas() => loadOrdenes();
+
+  void _refrescarListas([Set<String>? idsServidor]) {
+    final todas = _ordenesBox.values
+        .where((o) => idsServidor == null || idsServidor.contains(o.id) || o.isLocal)
+        .toList()
+      ..sort((a, b) => b.fechaHora.compareTo(a.fechaHora));
+    _ordenesAbiertas = todas.where((o) => o.estado == 'abierta').toList();
+    _ordenesCerradas = todas.where((o) => o.estado == 'cerrada').toList();
   }
 
-  Future<void> createNewOrden(Cliente? cliente, double tasaCambio) async {
-    try {
-      // CRITICAL FIX: Limpiar completamente el estado anterior antes de crear nueva orden
-      _currentOrden = null;
-      _selectedCliente = null;
-      notifyListeners();
-
-      // Crear orden en el backend directamente (sin numero_recibo, el backend usará el ID)
-      if (await _syncService.hasConnection) {
-        try {
-          final response = await _apiService.createOrden({
-            'cliente_id': cliente?.id,
-            'cliente_nombre': cliente?.nombreCompleto ?? 'General',
-            'estado': 'abierta',
-            'detalles': [],
-            'metodo_pago': 'efectivo',
-            'turno': 'mañana',
-          });
-
-          _currentOrden = Orden.fromJson(response['data']);
-          print('Orden creada en backend: ID=${_currentOrden!.id}');
-        } catch (e) {
-          print('Error creando orden en backend: $e');
-          // Fallback a Hive si falla el backend
-          final orden = Orden(
-            id: _generateOrdenId(),
-            numeroRecibo: _generateOrdenId(), // Temporal hasta sincronizar
-            clienteId: cliente?.id ?? '',
-            clienteNombre: cliente?.nombreCompleto ?? 'General',
-            tasaCambio: tasaCambio,
-            estado: 'abierta',
-            isLocal: true,
-          );
-
-          final ordenesBox = Hive.box<Orden>('ordenes');
-          await ordenesBox.put(orden.id, orden);
-          _currentOrden = orden;
-          print('Orden creada localmente: ID=${orden.id}');
-        }
-      } else {
-        // Sin conexión, guardar localmente
-        final orden = Orden(
-          id: _generateOrdenId(),
-          numeroRecibo: _generateOrdenId(), // Temporal hasta sincronizar
-          clienteId: cliente?.id ?? '',
-          clienteNombre: cliente?.nombreCompleto ?? 'General',
-          tasaCambio: tasaCambio,
-          estado: 'abierta',
-          isLocal: true,
-        );
-
-        final ordenesBox = Hive.box<Orden>('ordenes');
-        await ordenesBox.put(orden.id, orden);
-        _currentOrden = orden;
-        print('Orden creada localmente (sin conexión): ID=${orden.id}');
-      }
-
-      _selectedCliente = cliente;
-      notifyListeners();
-    } catch (e) {
-      _error = e.toString();
-      print('Error creando orden: $e');
-      notifyListeners();
-    }
-  }
-
-  Future<void> updateOrden(List<DetalleOrden> nuevosDetalles) async {
-    if (_currentOrden == null) return;
-
-    try {
-      final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-      final ordenesBox = Hive.box<Orden>('ordenes');
-
-      // CRITICAL FIX: Implementar lógica diff (UPDATE/DELETE/INSERT)
-      
-      // 1. Obtener estado anterior desde BD
-      final estadoAnterior = detallesBox.values
-          .where((d) => _currentOrden!.detalleIds.contains(d.id))
-          .toList();
-
-      // 2. Crear mapa para comparación eficiente
-      final mapaAnterior = <String, DetalleOrden>{};
-      for (var detalle in estadoAnterior) {
-        mapaAnterior[detalle.productoId] = detalle;
-      }
-
-      // 3. Procesar cambios diff
-      final detalleIdsNuevos = <String>[];
-      
-      for (var nuevoDetalle in nuevosDetalles) {
-        final detalleAnterior = mapaAnterior[nuevoDetalle.productoId];
-        
-        if (detalleAnterior == null) {
-          // INSERT: Nuevo producto en la comanda (marcar como nuevo para impresión)
-          final detalleNuevo = nuevoDetalle.copyWith(isNew: true);
-          await detallesBox.put(detalleNuevo.id, detalleNuevo);
-          detalleIdsNuevos.add(detalleNuevo.id);
-        } else {
-          // UPDATE: Producto existente con posible cambio de cantidad
-          if (detalleAnterior.cantidad != nuevoDetalle.cantidad) {
-            final detalleActualizado = detalleAnterior.copyWith(
-              cantidad: nuevoDetalle.cantidad,
-              // subtotal se recalcula automáticamente
-            );
-            await detallesBox.put(detalleAnterior.id, detalleActualizado);
-          }
-          detalleIdsNuevos.add(detalleAnterior.id);
-        }
-      }
-
-      // 4. DELETE: Eliminar productos que ya no están en el carrito
-      for (var detalleAnterior in estadoAnterior) {
-        final productoId = detalleAnterior.productoId;
-        final existeEnNuevos = nuevosDetalles.any((d) => d.productoId == productoId);
-        
-        if (!existeEnNuevos) {
-          await detallesBox.delete(detalleAnterior.id);
-        }
-      }
-
-      // 5. Actualizar lista de detalleIds de la orden
-      _currentOrden!.detalleIds = detalleIdsNuevos;
-
-      // 6. Detectar cambios para impresión de comanda modificada
-      final cambios = _changeService.detectarCambios(
-        estadoAnterior,
-        nuevosDetalles,
-        _currentOrden!.numeroRecibo,
-      );
-      _ultimoCambioDetectado = cambios;
-
-      // 7. Recalcular totales
-      final allDetalles = detallesBox.values
-          .where((d) => _currentOrden!.detalleIds.contains(d.id))
-          .toList();
-
-      final subtotal = allDetalles.fold(0.0, (sum, d) => sum + d.subtotal);
-      final impuesto = _currentOrden!.aplicaIva ? subtotal * 0.16 : 0.0;
-      final total = subtotal + impuesto;
-
-      _currentOrden = _currentOrden!.copyWith(
-        subtotal: subtotal,
-        impuesto: impuesto,
-        total: total,
-      );
-
-      await ordenesBox.put(_currentOrden!.id, _currentOrden!);
-
-      // 8. PASO 5B: Si se detectaron cambios, imprimir tickets separados
-      if (cambios.tieneCambios) {
-        try {
-          // Imprimir productos añadidos
-          if (cambios.tieneAgregaciones) {
-            await _bluetoothService.printProductosAnadidos(
-              _currentOrden!,
-              cambios.detallesAgregados,
-            );
-          }
-
-          // Imprimir productos eliminados
-          if (cambios.tieneEliminaciones) {
-            await _bluetoothService.printProductosEliminados(
-              _currentOrden!,
-              cambios.detallesEliminados,
-            );
-          }
-
-          // Resetear flags de modificación después de imprimir
-          for (var detalleId in _currentOrden!.detalleIds) {
-            final detalle = detallesBox.get(detalleId);
-            if (detalle != null && detalle.fueModificado) {
-              final detalleReset = detalle.copyWith(fueModificado: false);
-              await detallesBox.put(detalleId, detalleReset);
-            }
-          }
-        } catch (e) {
-          // No interrumpir el flujo si falla la impresión
-        }
-      }
-
-      notifyListeners();
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
-    }
-  }
-
-  // PASO 4: Actualizar notas de la orden
-  void updateOrdenNotas(String notas) {
-    if (_currentOrden == null) return;
-
-    final notasExistentes = _currentOrden!.notas ?? '';
-    final nuevasNotas = notasExistentes.isEmpty
-        ? notas
-        : '$notasExistentes - $notas';
-
-    _currentOrden = _currentOrden!.copyWith(notas: nuevasNotas);
-    notifyListeners();
-  }
-
-  // PASO 4: Limpiar notas de la orden después de imprimir
-  Future<void> clearOrdenNotas() async {
-    if (_currentOrden == null) return;
-
-    _currentOrden = _currentOrden!.copyWith(notas: null);
-    
-    final ordenesBox = Hive.box<Orden>('ordenes');
-    await ordenesBox.put(_currentOrden!.id, _currentOrden!);
-    
-    notifyListeners();
-  }
-
-  // Editar comanda existente (reemplazar completamente los detalles)
-  Future<void> editarComandaCompleta(List<DetalleOrden> nuevosDetalles) async {
-    if (_currentOrden == null) return;
-
-    try {
-      final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-      final ordenesBox = Hive.box<Orden>('ordenes');
-
-      // Obtener detalles anteriores para generar tickets de anulación si es necesario
-      final detallesAnteriores = detallesBox.values
-          .where((d) => _currentOrden!.detalleIds.contains(d.id))
-          .toList();
-
-      // Borrar todos los detalles existentes de la orden
-      for (var detalleId in _currentOrden!.detalleIds) {
-        await detallesBox.delete(detalleId);
-      }
-
-      // Limpiar la lista de detalleIds
-      _currentOrden!.detalleIds.clear();
-
-      // Guardar nuevos detalles
-      for (var detalle in nuevosDetalles) {
-        await detallesBox.put(detalle.id, detalle);
-        _currentOrden!.detalleIds.add(detalle.id);
-      }
-
-      // Generar tickets de anulación para productos eliminados o reducidos
-      for (var detalleAnterior in detallesAnteriores) {
-        final nuevoDetalle = nuevosDetalles
-            .where((d) => d.productoId == detalleAnterior.productoId)
-            .firstOrNull;
-        
-        if (nuevoDetalle == null) {
-          // Producto fue eliminado completamente
-          await _imprimirTicketAnulacion(detalleAnterior, detalleAnterior.cantidad);
-        } else if (nuevoDetalle.cantidad < detalleAnterior.cantidad) {
-          // Cantidad fue reducida
-          final cantidadEliminada = detalleAnterior.cantidad - nuevoDetalle.cantidad;
-          await _imprimirTicketAnulacion(detalleAnterior, cantidadEliminada);
-        }
-      }
-
-      // Recalcular totales
-      final allDetalles = detallesBox.values
-          .where((d) => _currentOrden!.detalleIds.contains(d.id))
-          .toList();
-
-      final subtotal = allDetalles.fold(0.0, (sum, d) => sum + d.subtotal);
-      final impuesto = subtotal * 0.16;
-      final total = subtotal + impuesto;
-
-      _currentOrden = _currentOrden!.copyWith(
-        subtotal: subtotal,
-        impuesto: impuesto,
-        total: total,
-      );
-
-      // Sincronizar con API si hay conexión
-      if (await _syncService.hasConnection) {
-        try {
-          final response = await _apiService.updateOrden(_currentOrden!.id, _currentOrden!.toJson());
-          
-          // Verificar si hay advertencias de stock
-          if (response['advertencias'] != null && response['advertencias'] is List) {
-            final advertencias = response['advertencias'] as List;
-            print('Advertencias de stock: $advertencias');
-            // Las advertencias se mostrarán en el UI
-          }
-          
-          _currentOrden = Orden.fromJson(response['data']).copyWith(isLocal: false, syncedAt: DateTime.now());
-        } catch (e) {
-          print('Error sincronizando edición: $e');
-          _currentOrden = _currentOrden!.copyWith(isLocal: true);
-        }
-      } else {
-        _currentOrden = _currentOrden!.copyWith(isLocal: true);
-      }
-
-      await ordenesBox.put(_currentOrden!.id, _currentOrden!);
-      notifyListeners();
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
-    }
-  }
-
-  // Imprimir ticket de anulación para cocina/barra
-  Future<void> _imprimirTicketAnulacion(DetalleOrden detalle, double cantidadEliminada) async {
-    try {
-      await _bluetoothService.printAnulacionTicket(
-        _currentOrden!,
-        detalle,
-        cantidadEliminada,
-      );
-    } catch (e) {
-      // Handle Web simulation
-      if (e.toString().contains('WEB_SIMULATION:anulacion')) {
-        rethrow;
-      }
-      print('Error imprimiendo ticket de anulación: $e');
-    }
-  }
-
-  Future<void> sendToKitchen() async {
-    if (_currentOrden == null) return;
-
-    try {
-      final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-      final detalles = detallesBox.values
-          .where((d) => _currentOrden!.detalleIds.contains(d.id) && d.isNew)
-          .toList();
-
-      // Sincronizar orden con el backend si hay conexión
-      if (await _syncService.hasConnection) {
-        try {
-          final detallesParaBackend = detalles.map((d) => {
-            'producto_id': int.parse(d.productoId),
-            'producto_nombre': d.productoNombre,
-            'precio_unitario': d.precioUnitario,
-            'cantidad': d.cantidad,
-          }).toList();
-
-          await _apiService.updateOrden(_currentOrden!.id, {
-            'estado': 'abierta',
-            'detalles': detallesParaBackend,
-            'subtotal': _currentOrden!.subtotal,
-            'total': _currentOrden!.total,
-          });
-        } catch (e) {
-          print('Error sincronizando orden con backend: $e');
-        }
-      }
-
-      // Imprimir comanda de cocina
-      await _bluetoothService.printKitchenCommand(_currentOrden!, detalles);
-
-      // Marcar detalles como no nuevos
-      for (var detalle in detalles) {
-        final updated = detalle.copyWith(isNew: false);
-        await detallesBox.put(detalle.id, updated);
-      }
-
-      // Limpiar notas del cliente después de imprimir
-      _currentOrden = _currentOrden!.copyWith(notas: null);
-      final ordenesBox = Hive.box<Orden>('ordenes');
-      await ordenesBox.put(_currentOrden!.id, _currentOrden!);
-
-      notifyListeners();
-    } catch (e) {
-      // Check if it's a Web simulation exception
-      if (e.toString().contains('WEB_SIMULATION:kitchen_command')) {
-        // Re-throw to let UI handle the modal
-        rethrow;
-      }
-      _error = e.toString();
-      notifyListeners();
-    }
-  }
-
-  Future<void> updateKitchenCommand() async {
-    if (_currentOrden == null) return;
-
-    try {
-      final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-      final detalles = detallesBox.values
-          .where((d) => _currentOrden!.detalleIds.contains(d.id) && d.isNew)
-          .toList();
-
-      if (detalles.isEmpty) {
-        _error = 'No hay items nuevos para imprimir';
-        notifyListeners();
-        return;
-      }
-
-      // Imprimir solo items nuevos
-      await _bluetoothService.printKitchenCommand(_currentOrden!, detalles, onlyNew: true);
-
-      // Marcar detalles como no nuevos
-      for (var detalle in detalles) {
-        final updated = detalle.copyWith(isNew: false);
-        await detallesBox.put(detalle.id, updated);
-      }
-
-      notifyListeners();
-    } catch (e) {
-      // Check if it's a Web simulation exception
-      if (e.toString().contains('WEB_SIMULATION:kitchen_command')) {
-        rethrow;
-      }
-      _error = e.toString();
-      notifyListeners();
-    }
-  }
-
-  Future<void> printPreCuenta(double tasaCambio) async {
-    if (_currentOrden == null) return;
-
-    try {
-      final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-      final detalles = detallesBox.values
-          .where((d) => _currentOrden!.detalleIds.contains(d.id))
-          .toList();
-
-      await _bluetoothService.printPreCuenta(_currentOrden!, detalles, tasaCambio);
-    } catch (e) {
-      // Check if it's a Web simulation exception
-      if (e.toString().contains('WEB_SIMULATION:pre_cuenta')) {
-        rethrow;
-      }
-      _error = e.toString();
-      notifyListeners();
-    }
-  }
-
-  // PASO 6: Cerrar orden con información de pago
-  Future<void> closeOrden({
-    required String metodoPago,
-    double? montoEntregado,
-    String? referencia,
-  }) async {
-    if (_currentOrden == null) return;
-
-    try {
-      final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-      final detalles = detallesBox.values
-          .where((d) => _currentOrden!.detalleIds.contains(d.id))
-          .toList();
-
-      // Obtener configuración desde Hive
-      final configBox = Hive.box<Configuracion>('configuracion');
-      final config = configBox.get('config');
-      final tasaCambio = config?.tasaCambio ?? 36.5;
-
-      // CRITICAL FIX: En Web, no intentar imprimir realmente
-      if (!kIsWeb) {
-        try {
-          await _bluetoothService.printFinalTicket(_currentOrden!, detalles, tasaCambio, metodoPago);
-        } catch (e) {
-          print('Error al imprimir ticket (ignorado en Web): $e');
-        }
-      }
-
-      // PASO 6: Actualizar orden con información de pago
-      _currentOrden = _currentOrden!.copyWith(
-        estado: 'cerrada',
-        metodoPago: metodoPago,
-      );
-
-      // Agregar notas con información de pago si existe
-      final notasPago = <String>[];
-      if (montoEntregado != null) {
-        notasPago.add('Efectivo: \$${montoEntregado.toStringAsFixed(2)}');
-      }
-      if (referencia != null && referencia.isNotEmpty) {
-        notasPago.add('Ref: $referencia');
-      }
-
-      if (notasPago.isNotEmpty) {
-        final notasExistentes = _currentOrden!.notas ?? '';
-        final nuevasNotas = notasExistentes.isEmpty
-            ? notasPago.join(', ')
-            : '$notasExistentes - ${notasPago.join(', ')}';
-        _currentOrden = _currentOrden!.copyWith(notas: nuevasNotas);
-      }
-
-      // Intentar sincronizar con API primero (Online First)
-      if (await _syncService.hasConnection) {
-        try {
-          final response = await _apiService.updateOrden(_currentOrden!.id, _currentOrden!.toJson());
-
-          // Verificar si hay advertencias de stock (response es un Map)
-          if (response['advertencias'] != null && response['advertencias'] is List) {
-            final advertencias = response['advertencias'] as List;
-            print('Advertencias de stock: $advertencias');
-            // Guardar advertencias para mostrarlas en el UI
-            _stockWarnings = advertencias.cast<String>();
-          } else {
-            _stockWarnings = [];
-          }
-
-          _currentOrden = Orden.fromJson(response['data']).copyWith(isLocal: false, syncedAt: DateTime.now());
-          print('Orden sincronizada con API: ${_currentOrden!.numeroRecibo}');
-
-          // Eliminar orden local de Hive para evitar duplicados
-          final ordenesBox = Hive.box<Orden>('ordenes');
-          await ordenesBox.delete(_currentOrden!.id);
-        } catch (e) {
-          print('Error al actualizar orden en API, guardando localmente: $e');
-          _currentOrden = _currentOrden!.copyWith(isLocal: true);
-        }
-      } else {
-        print('Sin conexión, guardando orden localmente');
-        _currentOrden = _currentOrden!.copyWith(isLocal: true);
-      }
-
-      final ordenesBox = Hive.box<Orden>('ordenes');
-      await ordenesBox.put(_currentOrden!.id, _currentOrden!);
-
-      // Agregar a cola de sincronización si quedó local
-      if (_currentOrden!.isLocal) {
-        await _syncService.addToSyncQueue(_currentOrden!);
-      }
-
-      // Limpiar orden actual
-      _currentOrden = null;
-      _selectedCliente = null;
-
-      // Recargar órdenes abiertas y cerradas
-      await loadOrdenesAbiertas();
-      await loadOrdenesCerradas();
-
-      notifyListeners();
-    } catch (e) {
-      _error = e.toString();
-      print('Error en closeOrden: $e');
-      notifyListeners();
-    }
-  }
-
-  void clearStockWarnings() {
-    _stockWarnings = [];
-    notifyListeners();
-  }
-
-  // Método para cerrar orden con IVA personalizado
-  Future<void> closeOrdenConIva(String metodoPago, double tasaCambio, bool aplicaIva) async {
-    if (_currentOrden == null) return;
-
-    try {
-      final detallesBox = Hive.box<DetalleOrden>('detalles_orden');
-      final detalles = detallesBox.values
-          .where((d) => _currentOrden!.detalleIds.contains(d.id))
-          .toList();
-
-      // Calcular IVA y total según aplicaIva
-      final tasaIva = 0.16;
-      final impuestoCalculado = aplicaIva ? _currentOrden!.subtotal * tasaIva : 0.0;
-      final totalCalculado = _currentOrden!.subtotal + impuestoCalculado;
-
-      // CRITICAL FIX: Mantener el mismo ID, solo cambiar estado y totales
-      _currentOrden = _currentOrden!.copyWith(
-        aplicaIva: aplicaIva,
-        impuesto: impuestoCalculado,
-        total: totalCalculado,
-        estado: 'cerrada',
-        metodoPago: metodoPago,
-      );
-
-      // Imprimir ticket final (con manejo de error en Web)
-      if (!kIsWeb) {
-        try {
-          await _bluetoothService.printFinalTicket(_currentOrden!, detalles, tasaCambio, metodoPago);
-        } catch (e) {
-          print('Error al imprimir ticket (ignorado): $e');
-        }
-      }
-
-      // Intentar sincronizar con API primero (Online First)
-      if (await _syncService.hasConnection) {
-        try {
-          final response = await _apiService.updateOrden(_currentOrden!.id, _currentOrden!.toJson());
-          
-          // Verificar si hay advertencias de stock (response es un Map)
-          if (response['advertencias'] != null && response['advertencias'] is List) {
-            final advertencias = response['advertencias'] as List;
-            print('Advertencias de stock: $advertencias');
-            _stockWarnings = advertencias.cast<String>();
-          } else {
-            _stockWarnings = [];
-          }
-          
-          _currentOrden = Orden.fromJson(response['data']).copyWith(isLocal: false, syncedAt: DateTime.now());
-          print('Orden sincronizada con servidor. ID local: ${_currentOrden!.id}, ID servidor: ${response['data']['id']}');
-          
-          // Eliminar orden local de Hive para evitar duplicados
-          final ordenesBox = Hive.box<Orden>('ordenes');
-          await ordenesBox.delete(_currentOrden!.id);
-        } catch (e) {
-          print('Error al actualizar orden en API, guardando localmente: $e');
-          _currentOrden = _currentOrden!.copyWith(isLocal: true);
-        }
-      } else {
-        _currentOrden = _currentOrden!.copyWith(isLocal: true);
-      }
-
-      final ordenesBox = Hive.box<Orden>('ordenes');
-      await ordenesBox.put(_currentOrden!.id, _currentOrden!);
-
-      // Agregar a cola de sincronización si quedó local
-      if (_currentOrden!.isLocal) {
-        await _syncService.addToSyncQueue(_currentOrden!);
-      }
-
-      // Limpiar orden actual
-      _currentOrden = null;
-      _selectedCliente = null;
-
-      // Recargar órdenes abiertas y cerradas
-      await loadOrdenesAbiertas();
-      await loadOrdenesCerradas();
-
-      notifyListeners();
-    } catch (e) {
-      _error = e.toString();
-      print('Error en closeOrdenConIva: $e');
-      notifyListeners();
-    }
-  }
-
+  // ---------------------------------------------------------------------------
+  // Selección de orden / cliente
+  // ---------------------------------------------------------------------------
+
+  /// Deja una orden abierta como la orden en edición (y restaura su cliente,
+  /// que antes se perdía y bloqueaba "Enviar a cocina").
   void selectOrden(Orden orden) {
     _currentOrden = orden;
+    _selectedCliente = _clienteDe(orden);
     notifyListeners();
   }
 
-  void updateCurrentOrden(Orden orden) {
-    _currentOrden = orden;
-    notifyListeners();
+  Cliente? _clienteDe(Orden orden) {
+    if (orden.clienteId.isEmpty) return null;
+    final guardado = Hive.box<Cliente>('clientes').get(orden.clienteId);
+    if (guardado != null) return guardado;
+    return Cliente(
+      id: orden.clienteId,
+      nombre: orden.clienteNombre,
+      apellido: '',
+      cedula: '',
+      isLocal: false,
+    );
   }
 
   void selectCliente(Cliente? cliente) {
@@ -851,16 +181,596 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Descarta la orden en edición (no la borra: solo deja de editarse).
   void clearCurrentOrden() {
     _currentOrden = null;
     _selectedCliente = null;
     notifyListeners();
   }
 
-  String _generateOrdenId() {
-    // Generar un ID único basado en timestamp + random para evitar colisiones
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final random = (timestamp % 1000);
-    return (timestamp + random).toString();
+  // ---------------------------------------------------------------------------
+  // Acciones del POS
+  // ---------------------------------------------------------------------------
+
+  /// Guarda la comanda y la envía a cocina.
+  ///
+  /// Imprime solo lo que cambió respecto a lo último que se envió: la comanda
+  /// completa la primera vez, y después los productos añadidos o los
+  /// eliminados/reducidos. No se imprime nada al tocar +/- en el carrito.
+  Future<AccionResultado> enviarComanda({
+    required List<DetalleOrden> detalles,
+    required Cliente cliente,
+    required double tasaCambio,
+    bool aplicaIva = false,
+    String? notas,
+  }) async {
+    try {
+      var orden = await _asegurarOrden(cliente, tasaCambio);
+      final idAntes = orden.id;
+      final anteriores = detallesDe(orden);
+
+      orden = await _guardarDetalles(orden, detalles, aplicaIva: aplicaIva);
+      if (notas != null && notas.trim().isNotEmpty) {
+        orden = orden.copyWith(notas: notas.trim());
+      }
+
+      final actuales = detallesDe(orden);
+      final advertencias = <String>[];
+      orden = await _sincronizar(orden, advertencias);
+
+      final cambios =
+          _changeService.detectarCambios(anteriores, actuales, orden.numeroRecibo);
+      // Solo cuenta como "ya enviada" si la comanda se imprimió de verdad
+      final yaEnviada = anteriores.isNotEmpty && await _comandaImpresa(idAntes);
+
+      // Qué se imprime: la comanda completa o solo la diferencia
+      final impresion = await _imprimirComanda(orden, actuales, cambios, yaEnviada);
+      if (impresion.error == null && (actuales.isNotEmpty || yaEnviada)) {
+        await _marcarComandaImpresa(orden.id);
+      }
+
+      // Las notas del cliente son de este envío: no se arrastran al siguiente
+      orden = orden.copyWith(clearNotas: true);
+      await _ordenesBox.put(orden.id, orden);
+
+      // La orden queda guardada: el POS vuelve a empezar para la siguiente comanda
+      _currentOrden = null;
+      _selectedCliente = null;
+      _refrescarListas();
+      notifyListeners();
+
+      if (impresion.simulada) {
+        return AccionResultado(
+          ok: true,
+          advertencias: advertencias,
+          preview: TicketPreview(
+            orden: orden,
+            detalles: yaEnviada ? _soloCambios(cambios) : actuales,
+            tipo: 'comanda',
+          ),
+        );
+      }
+      return AccionResultado(
+        ok: true,
+        advertencias: advertencias,
+        mensaje: impresion.error == null
+            ? (cambios.tieneCambios || !yaEnviada
+                ? 'Comanda enviada a cocina'
+                : 'La comanda no tenía cambios')
+            : 'Comanda guardada, pero no se pudo imprimir: ${impresion.error}',
+      );
+    } catch (e) {
+      logd('Error enviando la comanda: $e');
+      _error = e.toString();
+      notifyListeners();
+      return AccionResultado(ok: false, mensaje: 'No se pudo guardar la comanda: $e');
+    }
   }
+
+  /// Cobra la orden: la guarda, la cierra con el método de pago y, solo si todo
+  /// salió bien, imprime el ticket final.
+  Future<AccionResultado> cobrar({
+    required List<DetalleOrden> detalles,
+    required Cliente cliente,
+    required double tasaCambio,
+    required String metodoPago,
+    required bool aplicaIva,
+    double? montoEntregado,
+    String? referencia,
+  }) async {
+    try {
+      var orden = await _asegurarOrden(cliente, tasaCambio);
+      orden = await _guardarDetalles(orden, detalles, aplicaIva: aplicaIva);
+
+      final notasPago = <String>[
+        if (montoEntregado != null) 'Efectivo: \$${montoEntregado.toStringAsFixed(2)}',
+        if (referencia != null && referencia.isNotEmpty) 'Ref: $referencia',
+      ];
+      final notasPrevias = orden.notas ?? '';
+      orden = orden.copyWith(
+        estado: 'cerrada',
+        metodoPago: metodoPago,
+        tasaCambio: tasaCambio,
+        notas: notasPago.isEmpty
+            ? null
+            : (notasPrevias.isEmpty
+                ? notasPago.join(', ')
+                : '$notasPrevias - ${notasPago.join(', ')}'),
+      );
+
+      final advertencias = <String>[];
+      orden = await _sincronizar(orden, advertencias);
+
+      _currentOrden = null;
+      _selectedCliente = null;
+      _refrescarListas();
+      notifyListeners();
+
+      final cerrada = detallesDe(orden);
+      final pendiente = orden.isLocal
+          ? 'Venta guardada sin conexión: se enviará al servidor al sincronizar.'
+          : null;
+
+      final impresion = await _imprimir(() =>
+          _bluetoothService.printFinalTicket(orden, cerrada, tasaCambio, metodoPago));
+
+      if (impresion.simulada) {
+        return AccionResultado(
+          ok: true,
+          mensaje: pendiente,
+          advertencias: advertencias,
+          preview: TicketPreview(
+            orden: orden,
+            detalles: cerrada,
+            tipo: 'final',
+            metodoPago: metodoPago,
+          ),
+        );
+      }
+      final partes = <String>[
+        'Venta completada',
+        if (pendiente != null) pendiente,
+        if (impresion.error != null)
+          'No se pudo imprimir el ticket (${impresion.error}). '
+              'Puede reimprimirlo desde Órdenes Cerradas.',
+      ];
+      return AccionResultado(
+        ok: true,
+        mensaje: partes.join('. '),
+        advertencias: advertencias,
+      );
+    } catch (e) {
+      logd('Error cobrando la orden: $e');
+      _error = e.toString();
+      notifyListeners();
+      return AccionResultado(ok: false, mensaje: 'No se pudo registrar el cobro: $e');
+    }
+  }
+
+  /// Imprime la pre-cuenta de lo que hay en el carrito. No guarda nada: la orden
+  /// solo cambia al enviar la comanda o al cobrar, así no se pierde la diferencia
+  /// que hay que mandar a cocina.
+  Future<AccionResultado> imprimirPreCuenta({
+    required List<DetalleOrden> detalles,
+    required Cliente? cliente,
+    required double tasaCambio,
+    bool aplicaIva = false,
+  }) async {
+    final base = _currentOrden ??
+        Orden(
+          numeroRecibo: 'PRE-CUENTA',
+          clienteId: cliente?.id ?? '',
+          clienteNombre: cliente?.nombreCompleto ?? 'General',
+          tasaCambio: tasaCambio,
+        );
+    final subtotal = _redondear(detalles.fold(0.0, (s, d) => s + d.subtotal));
+    final impuesto = aplicaIva ? _redondear(subtotal * kIvaRate) : 0.0;
+    final orden = base.copyWith(
+      clienteNombre: cliente?.nombreCompleto ?? base.clienteNombre,
+      subtotal: subtotal,
+      impuesto: impuesto,
+      total: subtotal + impuesto,
+      aplicaIva: aplicaIva,
+      tasaCambio: tasaCambio,
+    );
+    return _imprimirPreCuentaDe(orden, detalles, tasaCambio);
+  }
+
+  /// Pre-cuenta de una orden abierta ya guardada.
+  Future<AccionResultado> imprimirPreCuentaDeOrden(Orden orden, double tasaCambio) =>
+      _imprimirPreCuentaDe(orden, detallesDe(orden), tasaCambio);
+
+  Future<AccionResultado> _imprimirPreCuentaDe(
+    Orden orden,
+    List<DetalleOrden> detalles,
+    double tasaCambio,
+  ) async {
+    final impresion = await _imprimir(
+        () => _bluetoothService.printPreCuenta(orden, detalles, tasaCambio));
+    if (impresion.simulada) {
+      return AccionResultado(
+        ok: true,
+        preview: TicketPreview(orden: orden, detalles: detalles, tipo: 'pre_cuenta'),
+      );
+    }
+    if (impresion.error != null) {
+      return AccionResultado(
+          ok: false, mensaje: 'No se pudo imprimir: ${impresion.error}');
+    }
+    return const AccionResultado(ok: true, mensaje: 'Pre-cuenta impresa');
+  }
+
+  /// Vuelve a imprimir la comanda completa de una orden abierta.
+  Future<AccionResultado> reimprimirComanda(Orden orden) async {
+    final detalles = detallesDe(orden);
+    if (detalles.isEmpty) {
+      return const AccionResultado(ok: false, mensaje: 'La orden no tiene productos');
+    }
+    final impresion =
+        await _imprimir(() => _bluetoothService.printKitchenCommand(orden, detalles));
+    if (impresion.simulada) {
+      return AccionResultado(
+        ok: true,
+        preview: TicketPreview(orden: orden, detalles: detalles, tipo: 'comanda'),
+      );
+    }
+    if (impresion.error != null) {
+      return AccionResultado(
+          ok: false, mensaje: 'No se pudo imprimir: ${impresion.error}');
+    }
+    return const AccionResultado(ok: true, mensaje: 'Comanda reimpresa');
+  }
+
+  /// Vuelve a imprimir el ticket de una orden cerrada.
+  Future<AccionResultado> reimprimirTicket(Orden orden, double tasaCambio) async {
+    final detalles = detallesDe(orden);
+    final metodo = orden.metodoPago ?? 'efectivo';
+    final impresion = await _imprimir(
+        () => _bluetoothService.reprintTicket(orden, detalles, tasaCambio, metodo));
+    if (impresion.simulada) {
+      return AccionResultado(
+        ok: true,
+        preview: TicketPreview(
+          orden: orden,
+          detalles: detalles,
+          tipo: 'reprint',
+          metodoPago: metodo,
+        ),
+      );
+    }
+    if (impresion.error != null) {
+      return AccionResultado(
+          ok: false, mensaje: 'No se pudo imprimir: ${impresion.error}');
+    }
+    return const AccionResultado(ok: true, mensaje: 'Ticket reimpreso');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internos
+  // ---------------------------------------------------------------------------
+
+  /// Devuelve la orden en edición o crea una nueva (en el servidor si hay
+  /// conexión; si no, solo en este dispositivo).
+  Future<Orden> _asegurarOrden(Cliente cliente, double tasaCambio) async {
+    final actual = _currentOrden;
+    if (actual != null) {
+      // El cliente pudo cambiarse en el POS después de abrir la orden
+      if (actual.clienteId != cliente.id) {
+        final cambiada = actual.copyWith(
+          clienteId: cliente.id,
+          clienteNombre: cliente.nombreCompleto,
+        );
+        _currentOrden = cambiada;
+        return cambiada;
+      }
+      return actual;
+    }
+
+    Orden? creada;
+    if (await _syncService.hasConnection) {
+      try {
+        final response = await _apiService.createOrden({
+          // Un cliente creado sin conexión todavía no existe en el servidor
+          if (int.tryParse(cliente.id) != null) 'cliente_id': int.parse(cliente.id),
+          'cliente_nombre': cliente.nombreCompleto,
+          'estado': 'abierta',
+          'tasa_cambio': tasaCambio,
+          'detalles': [],
+          'metodo_pago': 'efectivo',
+          'turno': 'mañana',
+        });
+        creada = await _guardarDesdeServidor(Map<String, dynamic>.from(response['data'] as Map));
+        // fromJson no conoce el nombre que usamos al crearla
+        creada = creada.copyWith(
+          clienteId: cliente.id,
+          clienteNombre: cliente.nombreCompleto,
+          tasaCambio: tasaCambio,
+        );
+      } catch (e) {
+        logd('No se pudo crear la orden en el servidor, se crea local: $e');
+      }
+    }
+
+    creada ??= () {
+      final id = const Uuid().v4();
+      return Orden(
+        id: id,
+        numeroRecibo: 'LOC-${id.substring(0, 8).toUpperCase()}',
+        clienteId: cliente.id,
+        clienteNombre: cliente.nombreCompleto,
+        tasaCambio: tasaCambio,
+        isLocal: true,
+      );
+    }();
+
+    await _ordenesBox.put(creada.id, creada);
+    _currentOrden = creada;
+    return creada;
+  }
+
+  /// Reemplaza los detalles de la orden por los del carrito (conservando el id
+  /// de los productos que ya estaban) y recalcula los totales.
+  Future<Orden> _guardarDetalles(
+    Orden orden,
+    List<DetalleOrden> nuevos, {
+    required bool aplicaIva,
+  }) async {
+    final previos = {for (final d in detallesDe(orden)) d.productoId: d};
+    final ids = <String>[];
+
+    for (final n in nuevos) {
+      final previo = previos[n.productoId];
+      final detalle = DetalleOrden(
+        id: previo?.id,
+        ordenId: orden.id,
+        productoId: n.productoId,
+        productoNombre: n.productoNombre,
+        precioUnitario: n.precioUnitario,
+        cantidad: n.cantidad,
+        notas: n.notas,
+        isLocal: previo?.isLocal ?? true,
+        isNew: false,
+      );
+      await _detallesBox.put(detalle.id, detalle);
+      ids.add(detalle.id);
+    }
+    for (final previo in previos.values) {
+      if (!ids.contains(previo.id)) await _detallesBox.delete(previo.id);
+    }
+
+    final subtotal =
+        _redondear(ids.fold(0.0, (s, id) => s + (_detallesBox.get(id)?.subtotal ?? 0)));
+    final impuesto = aplicaIva ? _redondear(subtotal * kIvaRate) : 0.0;
+
+    final actualizada = orden.copyWith(
+      detalleIds: ids,
+      subtotal: subtotal,
+      impuesto: impuesto,
+      total: subtotal + impuesto,
+      aplicaIva: aplicaIva,
+    );
+    await _ordenesBox.put(actualizada.id, actualizada);
+    _currentOrden = actualizada;
+    return actualizada;
+  }
+
+  /// Envía la orden (con TODOS sus detalles: el servidor reemplaza los que
+  /// tenía) y adopta lo que responde. Sin conexión o si falla, la orden queda
+  /// pendiente en este dispositivo.
+  Future<Orden> _sincronizar(Orden orden, List<String> advertencias) async {
+    final detalles = detallesDe(orden);
+    var resultado = orden;
+
+    if (await _syncService.hasConnection) {
+      try {
+        final response =
+            await _apiService.updateOrden(orden.id, _payload(orden, detalles));
+
+        final adv = response['advertencias'];
+        if (adv is List) advertencias.addAll(adv.map((e) => e.toString()));
+
+        final guardada = await _guardarDesdeServidor(
+          Map<String, dynamic>.from(response['data'] as Map),
+          conservar: orden,
+        );
+        if (guardada.id != orden.id) {
+          // La orden creada sin conexión recibió su id definitivo del servidor
+          for (final id in orden.detalleIds) {
+            await _detallesBox.delete(id);
+          }
+          await _ordenesBox.delete(orden.id);
+        }
+        resultado = guardada;
+      } catch (e) {
+        // Si el servidor respondió con un rechazo (turno cerrado, validación,
+        // orden ya cerrada...) reintentar no sirve: se informa al usuario en
+        // lugar de dejar una venta pendiente que nunca se sincronizará.
+        if (e is ApiException &&
+            e.statusCode != null &&
+            e.statusCode! >= 400 &&
+            e.statusCode! < 500) {
+          rethrow;
+        }
+        logd('No se pudo enviar la orden al servidor, queda pendiente: $e');
+        resultado = orden.copyWith(isLocal: true);
+      }
+    } else {
+      resultado = orden.copyWith(isLocal: true);
+    }
+
+    await _ordenesBox.put(resultado.id, resultado);
+    if (resultado.isLocal && resultado.estado != 'abierta') {
+      await _syncService.addToSyncQueue(resultado);
+    }
+    _currentOrden = resultado.estado == 'abierta' ? resultado : _currentOrden;
+    return resultado;
+  }
+
+  Map<String, dynamic> _payload(Orden o, List<DetalleOrden> detalles) {
+    return {
+      'estado': o.estado,
+      if (o.metodoPago != null) 'metodo_pago': o.metodoPago,
+      'subtotal': o.subtotal,
+      'impuesto': o.impuesto,
+      'total': o.total,
+      'aplica_iva': o.aplicaIva,
+      'tasa_cambio': o.tasaCambio,
+      'tipo': o.tipo,
+      'cliente_nombre': o.clienteNombre,
+      if (int.tryParse(o.clienteId) != null) 'cliente_id': int.parse(o.clienteId),
+      'fecha_hora': o.fechaHora.toIso8601String(),
+      if (o.notas != null) 'notas': o.notas,
+      'detalles': detalles
+          .map((d) => {
+                'producto_id': int.tryParse(d.productoId) ?? d.productoId,
+                'producto_nombre': d.productoNombre,
+                'precio_unitario': d.precioUnitario,
+                'cantidad': d.cantidad,
+              })
+          .toList(),
+    };
+  }
+
+  /// Guarda en Hive una orden tal como la devuelve el servidor (con sus
+  /// detalles) y la devuelve como [Orden]. Con [conservar] se mantienen los
+  /// datos locales que el servidor no devuelve.
+  Future<Orden> _guardarDesdeServidor(
+    Map<String, dynamic> json, {
+    Orden? conservar,
+  }) async {
+    final base = Orden.fromJson(json);
+    final previa = _ordenesBox.get(base.id) ?? conservar;
+
+    final detallesJson = json['detalles'];
+    var detalleIds = previa?.detalleIds ?? <String>[];
+    var subtotal = base.subtotal;
+
+    if (detallesJson is List) {
+      for (final id in detalleIds) {
+        await _detallesBox.delete(id);
+      }
+      detalleIds = [];
+      var suma = 0.0;
+      for (final d in detallesJson.whereType<Map>()) {
+        final detalle =
+            DetalleOrden.fromServer(Map<String, dynamic>.from(d), ordenId: base.id);
+        await _detallesBox.put(detalle.id, detalle);
+        detalleIds.add(detalle.id);
+        suma += detalle.subtotal;
+      }
+      if (subtotal <= 0) subtotal = _redondear(suma);
+    }
+
+    final orden = base.copyWith(
+      detalleIds: detalleIds,
+      subtotal: subtotal,
+      total: base.total > 0 ? base.total : subtotal + base.impuesto,
+      // El servidor no devuelve las notas: se conservan las locales
+      notas: base.notas ?? conservar?.notas,
+      clienteId: base.clienteId.isEmpty ? previa?.clienteId : base.clienteId,
+      tasaCambio: base.tasaCambio > 0 ? base.tasaCambio : previa?.tasaCambio,
+      syncedAt: DateTime.now(),
+      isLocal: false,
+    );
+    await _ordenesBox.put(orden.id, orden);
+    return orden;
+  }
+
+  Future<_Impresion> _imprimirComanda(
+    Orden orden,
+    List<DetalleOrden> actuales,
+    ComandaChange cambios,
+    bool yaEnviada,
+  ) async {
+    if (!yaEnviada) {
+      if (actuales.isEmpty) return const _Impresion();
+      return _imprimir(() => _bluetoothService.printKitchenCommand(orden, actuales));
+    }
+    if (!cambios.tieneCambios) return const _Impresion();
+
+    final anadidos = <DetalleOrden>[
+      ...cambios.detallesAgregados,
+      // Más unidades de un producto ya enviado: solo se imprime la diferencia
+      ...cambios.detallesModificados
+          .where((c) => c.diferencia > 0)
+          .map((c) => _conCantidad(actuales, c.productoId, c.diferencia)),
+    ];
+    final eliminados = <DetalleOrden>[
+      ...cambios.detallesEliminados,
+      ...cambios.detallesModificados
+          .where((c) => c.diferencia < 0)
+          .map((c) => _conCantidad(actuales, c.productoId, -c.diferencia)),
+    ];
+
+    _Impresion resultado = const _Impresion();
+    if (anadidos.isNotEmpty) {
+      resultado = await _imprimir(
+          () => _bluetoothService.printProductosAnadidos(orden, anadidos));
+    }
+    if (eliminados.isNotEmpty && (resultado.ok || resultado.simulada)) {
+      final r = await _imprimir(
+          () => _bluetoothService.printProductosEliminados(orden, eliminados));
+      if (!r.ok) resultado = r.simulada && resultado.simulada ? resultado : r;
+    }
+    return resultado;
+  }
+
+  DetalleOrden _conCantidad(List<DetalleOrden> actuales, String productoId, double cantidad) {
+    final base = actuales.firstWhere((d) => d.productoId == productoId);
+    return DetalleOrden(
+      id: base.id,
+      ordenId: base.ordenId,
+      productoId: base.productoId,
+      productoNombre: base.productoNombre,
+      precioUnitario: base.precioUnitario,
+      cantidad: cantidad,
+      notas: base.notas,
+    );
+  }
+
+  /// Lo que se mostraría en la vista previa de una comanda con cambios (Web).
+  List<DetalleOrden> _soloCambios(ComandaChange cambios) => [
+        ...cambios.detallesAgregados,
+        ...cambios.detallesEliminados,
+      ];
+
+  Future<_Impresion> _imprimir(Future<void> Function() trabajo) async {
+    try {
+      await trabajo();
+      return const _Impresion();
+    } catch (e) {
+      final texto = e.toString();
+      if (texto.contains('WEB_SIMULATION')) return const _Impresion(simulada: true);
+      logd('Error de impresión: $texto');
+      return _Impresion(error: texto.replaceFirst('Exception: ', ''));
+    }
+  }
+
+  static const _kComandasImpresas = 'comandas_impresas';
+
+  Future<bool> _comandaImpresa(String ordenId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return (prefs.getStringList(_kComandasImpresas) ?? const []).contains(ordenId);
+    } catch (_) {
+      return true; // ante la duda, no reimprimir todo
+    }
+  }
+
+  Future<void> _marcarComandaImpresa(String ordenId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ids = prefs.getStringList(_kComandasImpresas) ?? <String>[];
+      if (!ids.contains(ordenId)) {
+        ids.add(ordenId);
+        // Solo interesan las órdenes recientes
+        await prefs.setStringList(
+            _kComandasImpresas, ids.length > 300 ? ids.sublist(ids.length - 300) : ids);
+      }
+    } catch (e) {
+      logd('No se pudo guardar la marca de comanda impresa: $e');
+    }
+  }
+
+  double _redondear(double v) => (v * 100).roundToDouble() / 100;
 }

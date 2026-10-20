@@ -1,224 +1,231 @@
+import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/producto.dart';
 import '../models/cliente.dart';
 import '../models/orden.dart';
 import '../models/configuracion.dart';
+import '../utils/constants.dart';
+import '../utils/log.dart';
+import 'token_storage.dart';
 
+/// Error de la API con un mensaje que se puede mostrar al usuario.
+class ApiException implements Exception {
+  final String message;
+  final int? statusCode;
+
+  ApiException(this.message, {this.statusCode});
+
+  @override
+  String toString() => message;
+}
+
+/// Cliente HTTP de la API. Es un único objeto compartido por toda la app, así
+/// la URL y el token son los mismos en todos los providers y servicios.
 class ApiService {
-  late String _baseUrl;
-  String? _token;
+  static final ApiService _instance = ApiService._internal();
 
-  ApiService() {
-    _loadConfig();
-  }
+  factory ApiService() => _instance;
+
+  ApiService._internal();
+
+  static const Duration _timeout = Duration(seconds: 15);
+
+  final TokenStorage _tokenStorage = TokenStorage();
+
+  String _baseUrl = kDefaultApiUrl;
+  String? _token;
+  Future<void>? _loading;
+
+  /// Se invoca cuando el servidor responde 401 con un token guardado
+  /// (token vencido o revocado). AuthProvider lo usa para cerrar la sesión.
+  void Function()? onUnauthorized;
 
   Future<void> _loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    // Usa 127.0.0.1 en lugar de localhost para Flutter Web
-    _baseUrl = prefs.getString('api_url') ?? 'http://127.0.0.1:8000/api';
-    _token = prefs.getString('auth_token'); // Usar auth_token en lugar de api_token
+    _baseUrl = prefs.getString('api_url') ?? kDefaultApiUrl;
+    _token = await _tokenStorage.read();
   }
 
-  // Método público para recargar configuración
-  Future<void> reloadConfig() async {
-    await _loadConfig();
+  /// Carga la URL y el token guardados. Todas las peticiones esperan a esto,
+  /// así nunca se usa la API antes de que la configuración esté lista.
+  Future<void> ensureLoaded() => _loading ??= _loadConfig();
+
+  /// Vuelve a leer la URL y el token guardados.
+  Future<void> reloadConfig() {
+    _loading = _loadConfig();
+    return _loading!;
   }
 
   String get baseUrl => _baseUrl;
 
-  void updateConfig(String baseUrl, String? token) {
-    _baseUrl = baseUrl;
-    _token = token;
+  bool get hasToken => _token != null && _token!.isNotEmpty;
+
+  /// Cambia la URL del servidor (el llamador es quien la persiste).
+  void setBaseUrl(String url) {
+    _baseUrl = url;
+    _loading ??= Future.value();
   }
 
+  /// Cambia el token en memoria (el llamador es quien lo persiste).
+  void setToken(String? token) {
+    _token = token;
+    _loading ??= Future.value();
+  }
+
+  Map<String, String> get _publicHeaders => {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+
   Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    if (_token != null) 'Authorization': 'Bearer $_token',
-  };
+        ..._publicHeaders,
+        if (hasToken) 'Authorization': 'Bearer $_token',
+      };
+
+  /// Punto único de salida de todas las peticiones: espera la configuración,
+  /// aplica timeout y avisa si el token ya no es válido.
+  Future<http.Response> _send(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    bool auth = true,
+  }) async {
+    await ensureLoaded();
+
+    final uri = Uri.parse('$_baseUrl$path');
+    final headers = auth ? _headers : _publicHeaders;
+    final encoded = body == null ? null : json.encode(body);
+
+    try {
+      final Future<http.Response> request = switch (method) {
+        'GET' => http.get(uri, headers: headers),
+        'POST' => http.post(uri, headers: headers, body: encoded),
+        'PUT' => http.put(uri, headers: headers, body: encoded),
+        _ => throw ArgumentError('Método HTTP no soportado: $method'),
+      };
+
+      final response = await request.timeout(_timeout);
+
+      if (auth && response.statusCode == 401 && hasToken) {
+        onUnauthorized?.call();
+      }
+
+      return response;
+    } on TimeoutException {
+      throw ApiException('El servidor no respondió a tiempo');
+    } catch (e) {
+      logd('Error de red en $method $path: $e');
+      throw ApiException('Error de conexión: $e');
+    }
+  }
+
+  dynamic _decode(http.Response response) => json.decode(response.body);
+
+  /// Extrae el mensaje de error que devuelve Laravel, si lo hay.
+  String _errorMessage(http.Response response, String fallback) {
+    try {
+      final data = _decode(response);
+      if (data is Map && data['message'] is String) {
+        return '$fallback: ${data['message']}';
+      }
+    } catch (_) {}
+    return '$fallback (${response.statusCode})';
+  }
 
   // Productos
   Future<List<Producto>> getProductos() async {
-    try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/pos/productos'),
-        headers: _headers,
-      );
+    final response = await _send('GET', '/pos/productos');
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => Producto.fromJson(json)).toList();
-      }
-      throw Exception('Error al cargar productos');
-    } catch (e) {
-      throw Exception('Error de conexión: $e');
+    if (response.statusCode == 200) {
+      final List<dynamic> data = _decode(response);
+      return data.map((json) => Producto.fromJson(json)).toList();
     }
-  }
-
-  Future<Producto> createProducto(Producto producto) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/productos'),
-        headers: _headers,
-        body: json.encode(producto.toJson()),
-      );
-
-      if (response.statusCode == 201) {
-        return Producto.fromJson(json.decode(response.body));
-      }
-      throw Exception('Error al crear producto');
-    } catch (e) {
-      throw Exception('Error de conexión: $e');
-    }
+    throw ApiException(_errorMessage(response, 'Error al cargar productos'),
+        statusCode: response.statusCode);
   }
 
   // Clientes
   Future<List<Cliente>> getClientes() async {
-    try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/clientes'),
-        headers: _headers,
-      );
+    final response = await _send('GET', '/clientes');
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body)['data'] ?? [];
-        return data.map((json) => Cliente.fromJson(json)).toList();
-      }
-      throw Exception('Error al cargar clientes');
-    } catch (e) {
-      throw Exception('Error de conexión: $e');
+    if (response.statusCode == 200) {
+      final List<dynamic> data = _decode(response)['data'] ?? [];
+      return data.map((json) => Cliente.fromJson(json)).toList();
     }
+    throw ApiException(_errorMessage(response, 'Error al cargar clientes'),
+        statusCode: response.statusCode);
   }
 
   Future<Cliente> createCliente(Cliente cliente) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/clientes'),
-        headers: _headers,
-        body: json.encode(cliente.toJson()),
-      );
+    final response = await _send('POST', '/clientes', body: cliente.toJson());
 
-      if (response.statusCode == 201) {
-        return Cliente.fromJson(json.decode(response.body));
-      }
-      throw Exception('Error al crear cliente');
-    } catch (e) {
-      throw Exception('Error de conexión: $e');
+    if (response.statusCode == 201) {
+      return Cliente.fromJson(_decode(response));
     }
+    throw ApiException(_errorMessage(response, 'Error al crear cliente'),
+        statusCode: response.statusCode);
   }
 
   // Órdenes
   Future<Map<String, dynamic>> createOrden(Map<String, dynamic> ordenData) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/pos/ordenes'),
-        headers: _headers,
-        body: json.encode(ordenData),
-      );
+    final response = await _send('POST', '/pos/ordenes', body: ordenData);
 
-      print('createOrden response: ${response.statusCode}');
-      print('createOrden body: ${response.body}');
-
-      if (response.statusCode == 201) {
-        return json.decode(response.body);
-      }
-      throw Exception('Error al crear orden');
-    } catch (e) {
-      print('Error en createOrden: $e');
-      throw Exception('Error de conexión: $e');
+    if (response.statusCode == 201) {
+      return _decode(response);
     }
+    throw ApiException(_errorMessage(response, 'Error al crear orden'),
+        statusCode: response.statusCode);
   }
 
   Future<Map<String, dynamic>> getOrdenes() async {
-    try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/pos/ordenes'),
-        headers: _headers,
-      );
+    final response = await _send('GET', '/pos/ordenes');
 
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      }
-      throw Exception('Error al obtener órdenes');
-    } catch (e) {
-      print('Error en getOrdenes: $e');
-      throw Exception('Error de conexión: $e');
+    if (response.statusCode == 200) {
+      return _decode(response);
     }
+    throw ApiException(_errorMessage(response, 'Error al obtener órdenes'),
+        statusCode: response.statusCode);
   }
 
   Future<Map<String, dynamic>> updateOrden(String id, Map<String, dynamic> data) async {
-    try {
-      final url = '$_baseUrl/pos/ordenes/$id';
-      if (kDebugMode) {
-        print('updateOrden llamada a: $url');
-      }
+    final response = await _send('PUT', '/pos/ordenes/$id', body: data);
 
-      final response = await http.put(
-        Uri.parse(url),
-        headers: _headers,
-        body: json.encode(data),
-      );
-
-      if (kDebugMode) {
-        print('updateOrden status: ${response.statusCode}');
-      }
-
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      }
-      throw Exception('Error al actualizar orden (${response.statusCode})');
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error en updateOrden: $e');
-      }
-      throw Exception('Error de conexión: $e');
+    if (response.statusCode == 200) {
+      return _decode(response);
     }
+    throw ApiException(_errorMessage(response, 'Error al actualizar orden'),
+        statusCode: response.statusCode);
   }
 
   // Sincronización masiva de órdenes offline
   Future<bool> syncOrdenes(List<Orden> ordenes) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/sync/ordenes'),
-        headers: _headers,
-        body: json.encode({
-          'ordenes': ordenes.map((o) => o.toJson()).toList(),
-        }),
-      );
+    final response = await _send(
+      'POST',
+      '/sync/ordenes',
+      body: {'ordenes': ordenes.map((o) => o.toJson()).toList()},
+    );
 
-      return response.statusCode == 200;
-    } catch (e) {
-      throw Exception('Error de sincronización: $e');
-    }
+    return response.statusCode == 200;
   }
 
   // Configuración
   Future<Configuracion> getConfiguracion() async {
-    try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/configuracion'),
-        headers: _headers,
-      );
+    final response = await _send('GET', '/configuracion');
 
-      if (response.statusCode == 200) {
-        return Configuracion.fromJson(json.decode(response.body));
-      }
-      throw Exception('Error al cargar configuración');
-    } catch (e) {
-      throw Exception('Error de conexión: $e');
+    if (response.statusCode == 200) {
+      return Configuracion.fromJson(_decode(response));
     }
+    throw ApiException(_errorMessage(response, 'Error al cargar configuración'),
+        statusCode: response.statusCode);
   }
 
   // Verificar conexión
   Future<bool> checkConnection() async {
     try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/health'),
-        headers: _headers,
-      ).timeout(const Duration(seconds: 5));
+      final response = await _send('GET', '/health', auth: false)
+          .timeout(const Duration(seconds: 5));
 
       return response.statusCode == 200;
     } catch (e) {
@@ -228,88 +235,79 @@ class ApiService {
 
   // Alertas de stock
   Future<Map<String, dynamic>> getStockAlerts() async {
-    try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/insumos/stock-alerts'),
-        headers: _headers,
-      );
+    final response = await _send('GET', '/insumos/stock-alerts');
 
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      }
-      throw Exception('Error al cargar alertas de stock');
-    } catch (e) {
-      throw Exception('Error de conexión: $e');
+    if (response.statusCode == 200) {
+      return _decode(response);
     }
+    throw ApiException(_errorMessage(response, 'Error al cargar alertas de stock'),
+        statusCode: response.statusCode);
   }
 
-  // Login
+  // Login (no lleva token)
   Future<Map<String, dynamic>> login(String email, String password) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/login'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: json.encode({
-          'email': email,
-          'password': password,
-        }),
-      );
+    final response = await _send(
+      'POST',
+      '/login',
+      body: {'email': email, 'password': password},
+      auth: false,
+    );
 
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      }
-      throw Exception('Error al iniciar sesión');
+    if (response.statusCode == 200) {
+      return _decode(response);
+    }
+    if (response.statusCode == 401) {
+      throw ApiException('Credenciales incorrectas', statusCode: 401);
+    }
+    if (response.statusCode == 429) {
+      throw ApiException('Demasiados intentos. Espere un minuto e intente de nuevo.',
+          statusCode: 429);
+    }
+    throw ApiException(_errorMessage(response, 'Error al iniciar sesión'),
+        statusCode: response.statusCode);
+  }
+
+  /// Revoca el token en el servidor. Si falla (sin red) no importa: el token
+  /// local se borra igualmente.
+  Future<void> logout() async {
+    try {
+      await _send('POST', '/logout');
     } catch (e) {
-      throw Exception('Error de conexión: $e');
+      logd('No se pudo revocar el token en el servidor: $e');
     }
   }
 
-  // Abrir turno
+  // Turnos
+  Future<Map<String, dynamic>> getTurnoActivo() async {
+    final response = await _send('GET', '/turnos/activo');
+
+    if (response.statusCode == 200) {
+      return _decode(response);
+    }
+    throw ApiException(_errorMessage(response, 'Error al consultar el turno'),
+        statusCode: response.statusCode);
+  }
+
   Future<Map<String, dynamic>> abrirTurno() async {
-    try {
-      print('abrirTurno llamada a: $_baseUrl/turnos/abrir');
+    final response = await _send('POST', '/turnos/abrir');
 
-      final response = await http.post(
-        Uri.parse('$_baseUrl/turnos/abrir'),
-        headers: _headers,
-      );
-
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
-
-      if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 400) {
-        return json.decode(response.body);
-      }
-      throw Exception('Error al abrir turno');
-    } catch (e) {
-      print('Error en abrirTurno: $e');
-      throw Exception('Error de conexión: $e');
+    // 400 = "Ya tienes un turno abierto": el provider lo trata como válido.
+    if (response.statusCode == 200 ||
+        response.statusCode == 201 ||
+        response.statusCode == 400) {
+      return _decode(response);
     }
+    throw ApiException(_errorMessage(response, 'Error al abrir turno'),
+        statusCode: response.statusCode);
   }
 
-  // Cerrar turno
   Future<Map<String, dynamic>> cerrarTurno() async {
-    try {
-      print('cerrarTurno llamada a: $_baseUrl/turnos/cerrar');
+    final response = await _send('POST', '/turnos/cerrar');
 
-      final response = await http.post(
-        Uri.parse('$_baseUrl/turnos/cerrar'),
-        headers: _headers,
-      );
-
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      }
-      throw Exception('Error al cerrar turno');
-    } catch (e) {
-      print('Error en cerrarTurno: $e');
-      throw Exception('Error de conexión: $e');
+    if (response.statusCode == 200) {
+      return _decode(response);
     }
+    throw ApiException(_errorMessage(response, 'Error al cerrar turno'),
+        statusCode: response.statusCode);
   }
 }

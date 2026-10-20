@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import '../utils/constants.dart';
 
 part 'configuracion.g.dart';
 
@@ -16,6 +17,8 @@ class Configuracion extends HiveObject {
   @HiveField(3)
   String apiUrl;
   
+  // OBSOLETO: el token de sesión vive en TokenStorage. El campo se conserva
+  // solo para no romper los datos ya guardados en Hive.
   @HiveField(4)
   String apiToken;
   
@@ -26,7 +29,7 @@ class Configuracion extends HiveObject {
     this.tasaCambio = 36.5, // Tasa por defecto
     this.printerMacAddress,
     this.printerName,
-    this.apiUrl = 'http://localhost:8000/api',
+    this.apiUrl = kDefaultApiUrl,
     this.apiToken = '',
     this.lastSyncAt,
   });
@@ -47,7 +50,7 @@ class Configuracion extends HiveObject {
       tasaCambio: tasaCambioParsed,
       printerMacAddress: json['printer_mac_address'] as String?,
       printerName: json['printer_name'] as String?,
-      apiUrl: json['api_url'] as String? ?? 'http://192.168.1.100:8000/api',
+      apiUrl: json['api_url'] as String? ?? kDefaultApiUrl,
       apiToken: json['api_token'] as String? ?? '',
       lastSyncAt: json['last_sync_at'] != null 
           ? DateTime.parse(json['last_sync_at'] as String) 

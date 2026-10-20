@@ -3,18 +3,21 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../services/bluetooth_service.dart' as local;
 
 class BluetoothProvider with ChangeNotifier {
+  // Servicio compartido por toda la app: el estado de conexión vive ahí.
   final local.BluetoothService _bluetoothService = local.BluetoothService();
-  
-  List<BluetoothDevice> _devices = [];
+
   bool _isScanning = false;
-  bool _isConnected = false;
-  BluetoothDevice? _connectedDevice;
   String? _error;
 
-  List<BluetoothDevice> get devices => _devices;
+  BluetoothProvider() {
+    // Si la impresora se desconecta (apagada, fuera de alcance), refrescar la UI
+    _bluetoothService.onConnectionChanged = notifyListeners;
+  }
+
+  List<BluetoothDevice> get devices => _bluetoothService.availableDevices;
   bool get isScanning => _isScanning;
-  bool get isConnected => _isConnected;
-  BluetoothDevice? get connectedDevice => _connectedDevice;
+  bool get isConnected => _bluetoothService.isConnected;
+  BluetoothDevice? get connectedDevice => _bluetoothService.connectedDevice;
   String? get error => _error;
 
   Future<void> startScan() async {
@@ -24,11 +27,9 @@ class BluetoothProvider with ChangeNotifier {
 
     try {
       await _bluetoothService.startScan();
-      _devices = _bluetoothService.availableDevices;
-      _isScanning = false;
-      notifyListeners();
     } catch (e) {
       _error = e.toString();
+    } finally {
       _isScanning = false;
       notifyListeners();
     }
@@ -40,15 +41,11 @@ class BluetoothProvider with ChangeNotifier {
 
     try {
       final success = await _bluetoothService.connectToDevice(device);
-      if (success) {
-        _connectedDevice = device;
-        _isConnected = true;
-        notifyListeners();
-        return true;
+      if (!success) {
+        _error = 'No se pudo conectar a la impresora';
       }
-      _error = 'No se pudo conectar a la impresora';
       notifyListeners();
-      return false;
+      return success;
     } catch (e) {
       _error = e.toString();
       notifyListeners();
@@ -59,28 +56,20 @@ class BluetoothProvider with ChangeNotifier {
   Future<void> disconnect() async {
     try {
       await _bluetoothService.disconnect();
-      _connectedDevice = null;
-      _isConnected = false;
-      notifyListeners();
     } catch (e) {
       _error = e.toString();
-      notifyListeners();
     }
+    notifyListeners();
   }
 
+  /// Reconecta con la última impresora usada (si hay una guardada).
   Future<bool> reconnectToSavedDevice() async {
     _error = null;
-    notifyListeners();
 
     try {
       final success = await _bluetoothService.reconnectToSavedDevice();
-      if (success) {
-        _connectedDevice = _bluetoothService.connectedDevice;
-        _isConnected = true;
-        notifyListeners();
-        return true;
-      }
-      return false;
+      notifyListeners();
+      return success;
     } catch (e) {
       _error = e.toString();
       notifyListeners();
@@ -90,9 +79,6 @@ class BluetoothProvider with ChangeNotifier {
 
   local.BluetoothService get service => _bluetoothService;
 
-  @override
-  void dispose() {
-    _bluetoothService.dispose();
-    super.dispose();
-  }
+  // No se llama a `_bluetoothService.dispose()`: el servicio es compartido y
+  // sigue en uso aunque este provider se destruya.
 }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/shift_provider.dart';
 import '../providers/auth_provider.dart';
-import 'pos_screen.dart';
 import 'config_screen.dart';
 
 class InitialScreen extends StatelessWidget {
@@ -22,16 +21,6 @@ class InitialScreen extends StatelessWidget {
         child: Center(
           child: Consumer<ShiftProvider>(
             builder: (context, shiftProvider, _) {
-              if (shiftProvider.isShiftOpen) {
-                // If shift is open, go to POS screen
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const POSScreen()),
-                  );
-                });
-                return const CircularProgressIndicator(color: Colors.white);
-              }
-
               return Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -99,6 +88,15 @@ class InitialScreen extends StatelessWidget {
                         },
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 32),
+                  TextButton.icon(
+                    onPressed: () => context.read<AuthProvider>().logout(),
+                    icon: const Icon(Icons.logout, color: Colors.white70),
+                    label: const Text(
+                      'Cerrar sesión',
+                      style: TextStyle(color: Colors.white70),
+                    ),
                   ),
                 ],
               );

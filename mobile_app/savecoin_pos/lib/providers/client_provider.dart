@@ -3,6 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/cliente.dart';
 import '../services/api_service.dart';
 import '../services/sync_service.dart';
+import '../utils/log.dart';
 
 class ClientProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
@@ -15,7 +16,6 @@ class ClientProvider with ChangeNotifier {
   String? _error;
 
   List<Cliente> get clientes => _filteredClientes;
-  List<Cliente> get allClientes => _clientes;
   String? get searchQuery => _searchQuery;
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -60,64 +60,56 @@ class ClientProvider with ChangeNotifier {
     if (_searchQuery == null || _searchQuery!.isEmpty) {
       _filteredClientes = _clientes;
     } else {
+      final q = _searchQuery!.toLowerCase();
       _filteredClientes = _clientes.where((c) {
-        return c.nombreCompleto.toLowerCase().contains(_searchQuery!.toLowerCase()) ||
-               c.cedula.toLowerCase().contains(_searchQuery!.toLowerCase()) ||
-               (c.telefono?.toLowerCase().contains(_searchQuery!.toLowerCase()) ?? false);
+        return c.nombreCompleto.toLowerCase().contains(q) ||
+               c.cedula.toLowerCase().contains(q) ||
+               (c.telefono?.toLowerCase().contains(q) ?? false);
       }).toList();
     }
   }
 
-  // Obtener cliente por ID
-  Cliente? getClienteById(String id) {
-    try {
-      return _clientes.firstWhere((c) => c.id == id);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // Crear nuevo cliente con estrategia Online First con fallback a Hive
-  Future<bool> createCliente(Cliente cliente) async {
+  // Crear nuevo cliente con estrategia Online First con fallback a Hive.
+  // Devuelve el cliente tal como quedó guardado (con el ID del servidor si
+  // hubo conexión) o null si falló. Usar ESE objeto en la orden: el original
+  // tiene un ID temporal que el servidor no conoce.
+  Future<Cliente?> createCliente(Cliente cliente) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
       final clientesBox = Hive.box<Cliente>('clientes');
-      
+
       // Intentar sincronizar con API primero (Online First)
-      Cliente clienteGuardado = cliente;
-      
+      Cliente clienteGuardado;
+
       if (await _syncService.hasConnection) {
         try {
           final clienteDesdeAPI = await _apiService.createCliente(cliente);
           clienteGuardado = clienteDesdeAPI.copyWith(isLocal: false, syncedAt: DateTime.now());
         } catch (e) {
-          print('Error al crear cliente en API, haciendo fallback a Hive: $e');
-          // Fallback a Hive con isLocal = true
+          logd('Error al crear cliente en API, haciendo fallback a Hive: $e');
           clienteGuardado = cliente.copyWith(isLocal: true);
         }
       } else {
         // Sin conexión, guardar localmente con isLocal = true
         clienteGuardado = cliente.copyWith(isLocal: true);
       }
-      
-      // Guardar en Hive
+
       await clientesBox.put(clienteGuardado.id, clienteGuardado);
-      
-      // Recargar lista
+
       _clientes = clientesBox.values.toList();
       _applyFilter();
-      
+
       _isLoading = false;
       notifyListeners();
-      return true;
+      return clienteGuardado;
     } catch (e) {
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
-      return false;
+      return null;
     }
   }
 
@@ -148,5 +140,12 @@ class ClientProvider with ChangeNotifier {
   // Refrescar lista
   Future<void> refresh() async {
     await loadClientes();
+  }
+
+  /// Vuelve a leer los clientes desde Hive, sin llamar al servidor.
+  void reloadLocal() {
+    _clientes = Hive.box<Cliente>('clientes').values.toList();
+    _applyFilter();
+    notifyListeners();
   }
 }
