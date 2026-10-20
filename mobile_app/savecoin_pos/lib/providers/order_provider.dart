@@ -229,7 +229,9 @@ class OrderProvider with ChangeNotifier {
         await _marcarComandaImpresa(orden.id);
       }
 
-      // Las notas del cliente son de este envío: no se arrastran al siguiente
+      // Las notas del cliente son de este envío: no se arrastran al siguiente.
+      // El ticket (o su vista previa) se arma con la orden que aún las tiene.
+      final ordenConNotas = orden;
       orden = orden.copyWith(clearNotas: true);
       await _ordenesBox.put(orden.id, orden);
 
@@ -244,8 +246,8 @@ class OrderProvider with ChangeNotifier {
           ok: true,
           advertencias: advertencias,
           preview: TicketPreview(
-            orden: orden,
-            detalles: yaEnviada ? _soloCambios(cambios) : actuales,
+            orden: ordenConNotas,
+            detalles: yaEnviada ? _soloCambios(cambios, actuales) : actuales,
             tipo: 'comanda',
           ),
         );
@@ -688,19 +690,9 @@ class OrderProvider with ChangeNotifier {
     }
     if (!cambios.tieneCambios) return const _Impresion();
 
-    final anadidos = <DetalleOrden>[
-      ...cambios.detallesAgregados,
-      // Más unidades de un producto ya enviado: solo se imprime la diferencia
-      ...cambios.detallesModificados
-          .where((c) => c.diferencia > 0)
-          .map((c) => _conCantidad(actuales, c.productoId, c.diferencia)),
-    ];
-    final eliminados = <DetalleOrden>[
-      ...cambios.detallesEliminados,
-      ...cambios.detallesModificados
-          .where((c) => c.diferencia < 0)
-          .map((c) => _conCantidad(actuales, c.productoId, -c.diferencia)),
-    ];
+    final d = _diferencias(cambios, actuales);
+    final anadidos = d.anadidos;
+    final eliminados = d.eliminados;
 
     _Impresion resultado = const _Impresion();
     if (anadidos.isNotEmpty) {
@@ -728,11 +720,44 @@ class OrderProvider with ChangeNotifier {
     );
   }
 
-  /// Lo que se mostraría en la vista previa de una comanda con cambios (Web).
-  List<DetalleOrden> _soloCambios(ComandaChange cambios) => [
-        ...cambios.detallesAgregados,
-        ...cambios.detallesEliminados,
-      ];
+  /// Lo que se mostraría en la vista previa de una comanda con cambios (Web):
+  /// los mismos productos que se imprimirían (añadidos, más unidades, y los
+  /// eliminados o reducidos marcados como tales).
+  List<DetalleOrden> _soloCambios(ComandaChange cambios, List<DetalleOrden> actuales) {
+    final d = _diferencias(cambios, actuales);
+    return [
+      ...d.anadidos,
+      ...d.eliminados.map((e) => DetalleOrden(
+            id: e.id,
+            ordenId: e.ordenId,
+            productoId: e.productoId,
+            productoNombre: 'ELIMINAR: ${e.productoNombre}',
+            precioUnitario: e.precioUnitario,
+            cantidad: e.cantidad,
+            notas: e.notas,
+          )),
+    ];
+  }
+
+  ({List<DetalleOrden> anadidos, List<DetalleOrden> eliminados}) _diferencias(
+    ComandaChange cambios,
+    List<DetalleOrden> actuales,
+  ) {
+    final anadidos = <DetalleOrden>[
+      ...cambios.detallesAgregados,
+      // Más unidades de un producto ya enviado: solo se imprime la diferencia
+      ...cambios.detallesModificados
+          .where((c) => c.diferencia > 0)
+          .map((c) => _conCantidad(actuales, c.productoId, c.diferencia)),
+    ];
+    final eliminados = <DetalleOrden>[
+      ...cambios.detallesEliminados,
+      ...cambios.detallesModificados
+          .where((c) => c.diferencia < 0)
+          .map((c) => _conCantidad(actuales, c.productoId, -c.diferencia)),
+    ];
+    return (anadidos: anadidos, eliminados: eliminados);
+  }
 
   Future<_Impresion> _imprimir(Future<void> Function() trabajo) async {
     try {
