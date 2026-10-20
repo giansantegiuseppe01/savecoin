@@ -19,7 +19,9 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'], // Permitir todos los orígenes para desarrollo
+    // Orígenes web permitidos, separados por coma en CORS_ALLOWED_ORIGINS.
+    // La app móvil nativa no usa CORS; solo hace falta para Flutter Web.
+    'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', (string) env('CORS_ALLOWED_ORIGINS', ''))))),
 
     'allowed_origins_patterns' => [],
 
