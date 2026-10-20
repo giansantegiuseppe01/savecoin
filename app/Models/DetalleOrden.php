@@ -11,6 +11,13 @@ class DetalleOrden extends Model
 {
     use HasFactory;
 
+    // El id es un UUID generado en el hook `creating`. Sin esto Eloquent lo convierte a
+    // entero al leerlo y varios detalles terminan con el mismo id en el JSON (p. ej. todos
+    // los UUID que empiezan por letra pasan a 0), y la app los fusiona en uno solo.
+    public $incrementing = false;
+
+    protected $keyType = 'string';
+
     protected $fillable = [
         'orden_id',
         'producto_id',

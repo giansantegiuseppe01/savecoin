@@ -142,6 +142,50 @@ class PosOrdenesTest extends TestCase
         $this->assertEquals(10.0, (float) $insumo->fresh()->stock_actual);
     }
 
+    public function test_la_respuesta_devuelve_ids_de_detalle_distintos_y_como_texto(): void
+    {
+        $empleado = User::factory()->create();
+        $this->turnoAbierto($empleado);
+        [$producto] = $this->productoConInsumo(10, 1);
+
+        $id = (string) Str::uuid();
+        Orden::forceCreate([
+            'id' => $id,
+            'numero_recibo' => 'ORD-ONLINE-3',
+            'user_id' => $empleado->id,
+            'cliente_nombre' => 'General',
+            'tipo' => 'venta',
+            'estado' => 'abierta',
+            'subtotal' => 0,
+            'total' => 0,
+            'tasa_cambio' => 1,
+            'fecha_hora' => now(),
+            'is_local' => false,
+        ]);
+
+        $linea = fn (int $cantidad) => [
+            'producto_id' => $producto->id,
+            'producto_nombre' => $producto->nombre,
+            'precio_unitario' => 5,
+            'cantidad' => $cantidad,
+        ];
+
+        $response = $this->actingAs($empleado, 'sanctum')
+            ->putJson("/api/pos/ordenes/{$id}", [
+                'estado' => 'abierta',
+                'detalles' => [$linea(1), $linea(2), $linea(3)],
+            ])
+            ->assertOk();
+
+        $ids = array_column($response->json('data.detalles'), 'id');
+        $this->assertCount(3, $ids);
+        $this->assertCount(3, array_unique($ids), 'Cada detalle debe tener un id distinto');
+        foreach ($ids as $detalleId) {
+            $this->assertIsString($detalleId);
+            $this->assertTrue(Str::isUuid($detalleId));
+        }
+    }
+
     public function test_sync_usa_el_cliente_existente_y_no_crea_duplicados(): void
     {
         $empleado = User::factory()->create();
