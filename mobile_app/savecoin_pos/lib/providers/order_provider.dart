@@ -10,6 +10,7 @@ import '../services/bluetooth_service.dart';
 import '../services/comanda_change_service.dart';
 import '../services/sync_service.dart';
 import '../utils/constants.dart';
+import '../utils/formatters.dart';
 import '../utils/log.dart';
 
 /// Ticket que la pantalla debe mostrar como vista previa (solo en Web, donde no
@@ -565,8 +566,12 @@ class OrderProvider with ChangeNotifier {
 
     if (await _syncService.hasConnection) {
       try {
+        logd('[orden ${orden.id}] envío: ${_resumen(detalles)}');
         final response =
             await _apiService.updateOrden(orden.id, _payload(orden, detalles));
+        final devueltos = (response['data'] is Map ? response['data']['detalles'] : null);
+        logd('[orden ${orden.id}] servidor devolvió: '
+            '${devueltos is List ? devueltos.map((d) => "${d['producto_nombre']} x${d['cantidad']}").join(', ') : 'sin detalles'}');
 
         final adv = response['advertencias'];
         if (adv is List) advertencias.addAll(adv.map((e) => e.toString()));
@@ -583,6 +588,7 @@ class OrderProvider with ChangeNotifier {
           await _ordenesBox.delete(orden.id);
         }
         resultado = guardada;
+        logd('[orden ${guardada.id}] guardada localmente: ${_resumen(detallesDe(guardada))}');
       } catch (e) {
         // Si el servidor respondió con un rechazo (turno cerrado, validación,
         // orden ya cerrada...) reintentar no sirve: se informa al usuario en
@@ -796,6 +802,9 @@ class OrderProvider with ChangeNotifier {
       logd('No se pudo guardar la marca de comanda impresa: $e');
     }
   }
+
+  String _resumen(List<DetalleOrden> ds) =>
+      ds.map((d) => '${d.productoNombre} x${formatCantidad(d.cantidad)}').join(', ');
 
   double _redondear(double v) => (v * 100).roundToDouble() / 100;
 }
