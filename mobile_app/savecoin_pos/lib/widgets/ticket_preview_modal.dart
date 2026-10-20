@@ -215,7 +215,7 @@ class TicketPreviewModal extends StatelessWidget {
             ),
             _buildTotalRow(
               'Total Bs:',
-              '${(orden.total * tasaCambio).toStringAsFixed(2)}',
+              (orden.total * tasaCambio).toStringAsFixed(2),
               isBold: true,
               fontSize: 18,
             ),

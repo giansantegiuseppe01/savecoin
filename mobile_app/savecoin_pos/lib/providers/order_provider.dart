@@ -329,7 +329,7 @@ class OrderProvider with ChangeNotifier {
       }
       final partes = <String>[
         'Venta completada',
-        if (pendiente != null) pendiente,
+        ?pendiente,
         if (impresion.error != null)
           'No se pudo imprimir el ticket (${impresion.error}). '
               'Puede reimprimirlo desde Órdenes Cerradas.',

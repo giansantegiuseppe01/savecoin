@@ -63,7 +63,7 @@ class BluetoothService {
       // Escuchar dispositivos encontrados
       var subscription = FlutterBluePlus.scanResults.listen((results) {
         for (ScanResult r in results) {
-          if (!_availableDevices.any((d) => d.id == r.device.id)) {
+          if (!_availableDevices.any((d) => d.remoteId == r.device.remoteId)) {
             _availableDevices.add(r.device);
           }
         }
@@ -104,8 +104,8 @@ class BluetoothService {
 
       // Guardar MAC address
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('printer_mac', device.id.toString());
-      await prefs.setString('printer_name', device.name);
+      await prefs.setString('printer_mac', device.remoteId.toString());
+      await prefs.setString('printer_name', device.platformName);
 
       // Descubrir servicios y buscar la primera característica de escritura
       final services = await device.discoverServices();
@@ -162,7 +162,7 @@ class BluetoothService {
       await startScan();
       
       final device = _availableDevices.firstWhere(
-        (d) => d.id.toString() == macAddress,
+        (d) => d.remoteId.toString() == macAddress,
         orElse: () => throw Exception('Dispositivo no encontrado'),
       );
 
@@ -293,7 +293,7 @@ class BluetoothService {
       bytes += generator.hr();
 
       for (var detalle in detalles) {
-        bytes += generator.text('${detalle.productoNombre}');
+        bytes += generator.text(detalle.productoNombre);
         bytes += generator.text(
             '${formatCantidad(detalle.cantidad)} x \$${detalle.precioUnitario.toStringAsFixed(2)} = \$${detalle.subtotal.toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));
@@ -359,7 +359,7 @@ class BluetoothService {
       bytes += generator.hr();
 
       for (var detalle in detalles) {
-        bytes += generator.text('${detalle.productoNombre}');
+        bytes += generator.text(detalle.productoNombre);
         bytes += generator.text(
             '${formatCantidad(detalle.cantidad)} x \$${detalle.precioUnitario.toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));
@@ -412,7 +412,7 @@ class BluetoothService {
       bytes += generator.hr();
 
       for (var detalle in detalles) {
-        bytes += generator.text('${detalle.productoNombre}');
+        bytes += generator.text(detalle.productoNombre);
         bytes += generator.text(
             '${formatCantidad(detalle.cantidad)} x \$${detalle.precioUnitario.toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));
@@ -462,7 +462,7 @@ class BluetoothService {
       bytes += generator.hr();
 
       for (var detalle in detalles) {
-        bytes += generator.text('${detalle.productoNombre}');
+        bytes += generator.text(detalle.productoNombre);
         bytes += generator.text(
             '${formatCantidad(detalle.cantidad)} x \$${detalle.precioUnitario.toStringAsFixed(2)} = \$${detalle.subtotal.toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));
@@ -543,7 +543,7 @@ class BluetoothService {
       bytes += generator.hr();
 
       for (var detalle in detalles) {
-        bytes += generator.text('${detalle.productoNombre}');
+        bytes += generator.text(detalle.productoNombre);
         bytes += generator.text(
             '${formatCantidad(detalle.cantidad)} x \$${detalle.precioUnitario.toStringAsFixed(2)} = \$${detalle.subtotal.toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));

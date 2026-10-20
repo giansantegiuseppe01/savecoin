@@ -251,8 +251,8 @@ class _ConfigScreenState extends State<ConfigScreen> {
                         color: Colors.green[50],
                         child: ListTile(
                           leading: const Icon(Icons.bluetooth_connected, color: Colors.green),
-                          title: Text(bluetoothProvider.connectedDevice?.name ?? 'Desconocido'),
-                          subtitle: Text(bluetoothProvider.connectedDevice?.id.toString() ?? ''),
+                          title: Text(bluetoothProvider.connectedDevice?.platformName ?? 'Desconocido'),
+                          subtitle: Text(bluetoothProvider.connectedDevice?.remoteId.toString() ?? ''),
                           trailing: IconButton(
                             icon: const Icon(Icons.bluetooth_disabled),
                             onPressed: () => bluetoothProvider.disconnect(),
@@ -427,8 +427,8 @@ class _ConfigScreenState extends State<ConfigScreen> {
                         final device = provider.devices[index];
                         return ListTile(
                           leading: const Icon(Icons.bluetooth),
-                          title: Text(device.name),
-                          subtitle: Text(device.id.toString()),
+                          title: Text(device.platformName),
+                          subtitle: Text(device.remoteId.toString()),
                           onTap: () async {
                             final success = await provider.connectToDevice(device);
                             if (success && context.mounted) {
