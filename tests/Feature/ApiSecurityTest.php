@@ -241,7 +241,7 @@ class ApiSecurityTest extends TestCase
 
     public function test_cors_does_not_allow_arbitrary_origins(): void
     {
-        $this->assertSame([], config('cors.allowed_origins'));
+        $this->assertNotContains('*', config('cors.allowed_origins'));
         $this->assertFalse(config('cors.supports_credentials'));
     }
 

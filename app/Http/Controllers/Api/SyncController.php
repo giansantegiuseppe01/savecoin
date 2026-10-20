@@ -65,8 +65,10 @@ class SyncController extends Controller
                     }
 
                     // Crear orden
-                    $orden = Orden::create([
-                        'id' => $ordenData['id'], // UUID desde la app móvil
+                    // `id` no es asignable en masa: se fija explícitamente para conservar el UUID de la app
+                    $ordenId = (string) $ordenData['id'];
+                    $orden = (new Orden)->forceFill([
+                        'id' => $ordenId,
                         'numero_recibo' => $ordenData['numero_recibo'],
                         'user_id' => auth()->id(), // La ruta exige autenticación (auth:sanctum)
                         'cliente_id' => $clienteId,
@@ -88,12 +90,13 @@ class SyncController extends Controller
                         'synced_at' => now(),
                         'is_local' => false,
                     ]);
+                    $orden->save();
 
                     // Crear detalles de orden
                     foreach ($ordenData['detalles'] as $detalleData) {
                         DetalleOrden::create([
                             'id' => $detalleData['id'] ?? Str::uuid(),
-                            'orden_id' => $orden->id,
+                            'orden_id' => $ordenId,
                             'producto_id' => $detalleData['producto_id'] ?? null,
                             'producto_nombre' => $detalleData['producto_nombre'],
                             'precio_unitario' => $detalleData['precio_unitario'],

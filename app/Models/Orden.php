@@ -12,6 +12,10 @@ class Orden extends Model
 {
     use HasFactory, SoftDeletes;
 
+    // El id es texto (numérico desde la secuencia o UUID desde la app móvil): sin esto
+    // Eloquent lo convierte a entero y un UUID se corrompe (p. ej. "5097e84d-…" -> 5097).
+    protected $keyType = 'string';
+
     protected $fillable = [
         'numero_recibo',
         'user_id',
