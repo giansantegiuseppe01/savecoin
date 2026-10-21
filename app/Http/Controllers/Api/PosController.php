@@ -44,6 +44,7 @@ class PosController extends Controller
                 'impuesto' => 'nullable|numeric|min:0',
                 'aplica_iva' => 'nullable|boolean',
                 'notas' => 'nullable|string',
+                'referencia_pago' => 'nullable|string|max:100',
                 'detalles' => 'nullable|array', // Cambiado de required a nullable
                 'detalles.*.id' => 'nullable|string', // UUID opcional desde móvil
                 'detalles.*.producto_id' => 'required|exists:productos,id',
@@ -143,6 +144,7 @@ class PosController extends Controller
                 'turno' => null, // No usar este campo, usar turno_id
                 'fecha_hora' => now(),
                 'notas' => $validated['notas'] ?? null,
+                'referencia_pago' => $validated['referencia_pago'] ?? null,
                 'synced_at' => now(),
                 'is_local' => false,
             ]);
@@ -284,6 +286,7 @@ class PosController extends Controller
             $validated = $request->validate([
                 'estado' => 'required|in:abierta,cerrada,anulada',
                 'metodo_pago' => 'nullable|in:efectivo,tarjeta,transferencia,mixto',
+                'referencia_pago' => 'nullable|string|max:100',
                 'subtotal' => 'nullable|numeric|min:0',
                 'descuento' => 'nullable|numeric|min:0',
                 'impuesto' => 'nullable|numeric|min:0',
@@ -302,6 +305,9 @@ class PosController extends Controller
             $orden->estado = $validated['estado'];
             if (isset($validated['metodo_pago'])) {
                 $orden->metodo_pago = $validated['metodo_pago'];
+            }
+            if (array_key_exists('referencia_pago', $validated)) {
+                $orden->referencia_pago = $validated['referencia_pago'];
             }
             if (isset($validated['subtotal'])) {
                 $orden->subtotal = $validated['subtotal'];

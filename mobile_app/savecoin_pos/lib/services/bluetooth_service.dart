@@ -486,6 +486,10 @@ class BluetoothService {
       bytes += generator.hr();
       bytes += generator.text('Método de Pago: $metodoPago',
           styles: PosStyles(align: PosAlign.center));
+      if (orden.referenciaPago != null && orden.referenciaPago!.isNotEmpty) {
+        bytes += generator.text('Referencia: ${orden.referenciaPago}',
+            styles: PosStyles(align: PosAlign.center));
+      }
       bytes += generator.text('Tasa: \$1 = Bs${tasaCambio.toStringAsFixed(2)}',
           styles: PosStyles(align: PosAlign.center));
       bytes += generator.hr();
@@ -567,6 +571,10 @@ class BluetoothService {
       bytes += generator.hr();
       bytes += generator.text('Método de Pago: $metodoPago',
           styles: PosStyles(align: PosAlign.center));
+      if (orden.referenciaPago != null && orden.referenciaPago!.isNotEmpty) {
+        bytes += generator.text('Referencia: ${orden.referenciaPago}',
+            styles: PosStyles(align: PosAlign.center));
+      }
       bytes += generator.text('Tasa: \$1 = Bs${tasaCambio.toStringAsFixed(2)}',
           styles: PosStyles(align: PosAlign.center));
       bytes += generator.hr();

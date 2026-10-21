@@ -53,6 +53,12 @@
             <td class="label">Método Pago:</td>
             <td>{{ ucfirst($orden->metodo_pago) }}</td>
         </tr>
+        @if($orden->referencia_pago)
+        <tr>
+            <td class="label">Referencia:</td>
+            <td>{{ $orden->referencia_pago }}</td>
+        </tr>
+        @endif
         <tr>
             <td class="label">Cajero:</td>
             <td>{{ $orden->user->name }}</td>

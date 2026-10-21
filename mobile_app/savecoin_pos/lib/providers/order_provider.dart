@@ -287,13 +287,14 @@ class OrderProvider with ChangeNotifier {
 
       final notasPago = <String>[
         if (montoEntregado != null) 'Efectivo: \$${montoEntregado.toStringAsFixed(2)}',
-        if (referencia != null && referencia.isNotEmpty) 'Ref: $referencia',
       ];
       final notasPrevias = orden.notas ?? '';
       orden = orden.copyWith(
         estado: 'cerrada',
         metodoPago: metodoPago,
         tasaCambio: tasaCambio,
+        referenciaPago:
+            (referencia != null && referencia.trim().isNotEmpty) ? referencia.trim() : null,
         notas: notasPago.isEmpty
             ? null
             : (notasPrevias.isEmpty
@@ -618,6 +619,7 @@ class OrderProvider with ChangeNotifier {
     return {
       'estado': o.estado,
       if (o.metodoPago != null) 'metodo_pago': o.metodoPago,
+      if (o.referenciaPago != null) 'referencia_pago': o.referenciaPago,
       'subtotal': o.subtotal,
       'impuesto': o.impuesto,
       'total': o.total,

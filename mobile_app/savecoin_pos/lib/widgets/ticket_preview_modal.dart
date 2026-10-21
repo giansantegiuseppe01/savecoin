@@ -226,6 +226,8 @@ class TicketPreviewModal extends StatelessWidget {
           if (tipoTicket == 'final' && metodoPago != null) ...[
             const Divider(thickness: 1),
             _buildInfoRow('Método de Pago:', metodoPago!),
+            if (orden.referenciaPago != null && orden.referenciaPago!.isNotEmpty)
+              _buildInfoRow('Referencia:', orden.referenciaPago!),
           ],
           
           const SizedBox(height: 16),

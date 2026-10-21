@@ -36,13 +36,14 @@ class OrdenAdapter extends TypeAdapter<Orden> {
       isLocal: fields[17] as bool,
       aplicaIva: fields[9] as bool,
       detalleIds: (fields[18] as List?)?.cast<String>(),
+      referenciaPago: fields[19] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Orden obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(20)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -80,7 +81,9 @@ class OrdenAdapter extends TypeAdapter<Orden> {
       ..writeByte(17)
       ..write(obj.isLocal)
       ..writeByte(18)
-      ..write(obj.detalleIds);
+      ..write(obj.detalleIds)
+      ..writeByte(19)
+      ..write(obj.referenciaPago);
   }
 
   @override

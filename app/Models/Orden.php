@@ -33,6 +33,7 @@ class Orden extends Model
         'beneficio_bruto',
         'estado',
         'metodo_pago',
+        'referencia_pago',
         'turno',
         'fecha_hora',
         'notas',

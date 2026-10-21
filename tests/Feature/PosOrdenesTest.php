@@ -186,6 +186,47 @@ class PosOrdenesTest extends TestCase
         }
     }
 
+    public function test_cerrar_con_transferencia_guarda_la_referencia_del_pago(): void
+    {
+        $empleado = User::factory()->create();
+        $this->turnoAbierto($empleado);
+        [$producto] = $this->productoConInsumo(10, 1);
+
+        $id = (string) Str::uuid();
+        Orden::forceCreate([
+            'id' => $id,
+            'numero_recibo' => 'ORD-REF-1',
+            'user_id' => $empleado->id,
+            'cliente_nombre' => 'General',
+            'tipo' => 'venta',
+            'estado' => 'abierta',
+            'subtotal' => 0,
+            'total' => 0,
+            'tasa_cambio' => 1,
+            'fecha_hora' => now(),
+            'is_local' => false,
+        ]);
+
+        $this->actingAs($empleado, 'sanctum')
+            ->putJson("/api/pos/ordenes/{$id}", [
+                'estado' => 'cerrada',
+                'metodo_pago' => 'transferencia',
+                'referencia_pago' => '00123456',
+                'subtotal' => 5,
+                'total' => 5,
+                'detalles' => [[
+                    'producto_id' => $producto->id,
+                    'producto_nombre' => $producto->nombre,
+                    'precio_unitario' => 5,
+                    'cantidad' => 1,
+                ]],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.referencia_pago', '00123456');
+
+        $this->assertSame('00123456', Orden::find($id)->referencia_pago);
+    }
+
     public function test_sync_usa_el_cliente_existente_y_no_crea_duplicados(): void
     {
         $empleado = User::factory()->create();

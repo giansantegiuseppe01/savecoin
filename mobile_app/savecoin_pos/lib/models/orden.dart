@@ -62,6 +62,11 @@ class Orden extends HiveObject {
   @HiveField(18)
   List<String> detalleIds; // IDs de DetalleOrden
 
+  /// Referencia bancaria del pago (transferencias). Campo nuevo: en datos
+  /// guardados antes de añadirlo se lee como null.
+  @HiveField(19)
+  String? referenciaPago;
+
   Orden({
     String? id,
     required this.numeroRecibo,
@@ -82,6 +87,7 @@ class Orden extends HiveObject {
     this.isLocal = true,
     this.aplicaIva = false,
     List<String>? detalleIds,
+    this.referenciaPago,
   })  : id = id ?? DateTime.now().millisecondsSinceEpoch.toString(),
         fechaHora = fechaHora ?? DateTime.now(),
         detalleIds = detalleIds ?? [];
@@ -130,6 +136,7 @@ class Orden extends HiveObject {
       isLocal: false,
       aplicaIva: json['aplica_iva'] as bool? ?? false,
       detalleIds: _parseDetalleIds(json),
+      referenciaPago: json['referencia_pago'] as String?,
     );
   }
 
@@ -173,6 +180,7 @@ class Orden extends HiveObject {
       'is_local': isLocal,
       'aplica_iva': aplicaIva,
       'detalle_ids': detalleIds,
+      'referencia_pago': referenciaPago,
       'detalles': _detallesToMap(), // Enviar detalles completos para deducción de inventario
     };
   }
@@ -217,6 +225,7 @@ class Orden extends HiveObject {
     bool? isLocal,
     bool? aplicaIva,
     List<String>? detalleIds,
+    String? referenciaPago,
   }) {
     return Orden(
       id: id,
@@ -238,6 +247,7 @@ class Orden extends HiveObject {
       isLocal: isLocal ?? this.isLocal,
       aplicaIva: aplicaIva ?? this.aplicaIva,
       detalleIds: detalleIds ?? this.detalleIds,
+      referenciaPago: referenciaPago ?? this.referenciaPago,
     );
   }
 }

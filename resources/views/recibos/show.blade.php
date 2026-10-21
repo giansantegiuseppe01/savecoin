@@ -72,6 +72,12 @@
                                 <th>Método de Pago:</th>
                                 <td>{{ ucfirst($orden->metodo_pago) ?? 'N/A' }}</td>
                             </tr>
+                            @if($orden->referencia_pago)
+                            <tr>
+                                <th>Referencia:</th>
+                                <td>{{ $orden->referencia_pago }}</td>
+                            </tr>
+                            @endif
                             <tr>
                                 <th>Turno:</th>
                                 <td>{{ ucfirst($orden->turno) ?? 'N/A' }}</td>
