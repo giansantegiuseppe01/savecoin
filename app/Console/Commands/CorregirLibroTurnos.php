@@ -21,7 +21,11 @@ class CorregirLibroTurnos extends Command
     {
         $cambios = [];
 
-        foreach (LibroContable::where('referencia', 'like', 'turno\_%')->get() as $asiento) {
+        // El filtro se hace en PHP: el escape de `_` en LIKE cambia según el motor de base de datos.
+        $asientos = LibroContable::where('referencia', 'like', 'turno%')->get()
+            ->filter(fn ($a) => preg_match('/^turno_\d+$/', (string) $a->referencia) === 1);
+
+        foreach ($asientos as $asiento) {
             $turno = Turno::find((int) substr($asiento->referencia, 6));
             if (! $turno) {
                 $this->warn("{$asiento->referencia}: el turno ya no existe, se omite.");
