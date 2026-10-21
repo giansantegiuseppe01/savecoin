@@ -227,6 +227,54 @@ class PosOrdenesTest extends TestCase
         $this->assertSame('00123456', Orden::find($id)->referencia_pago);
     }
 
+    public function test_cerrar_con_transferencia_sin_referencia_se_rechaza(): void
+    {
+        $empleado = User::factory()->create();
+        $this->turnoAbierto($empleado);
+        [$producto, $insumo] = $this->productoConInsumo(10, 1);
+
+        $id = (string) Str::uuid();
+        Orden::forceCreate([
+            'id' => $id,
+            'numero_recibo' => 'ORD-REF-2',
+            'user_id' => $empleado->id,
+            'cliente_nombre' => 'General',
+            'tipo' => 'venta',
+            'estado' => 'abierta',
+            'subtotal' => 0,
+            'total' => 0,
+            'tasa_cambio' => 1,
+            'fecha_hora' => now(),
+            'is_local' => false,
+        ]);
+
+        $payload = [
+            'estado' => 'cerrada',
+            'metodo_pago' => 'transferencia',
+            'subtotal' => 5,
+            'total' => 5,
+            'detalles' => [[
+                'producto_id' => $producto->id,
+                'producto_nombre' => $producto->nombre,
+                'precio_unitario' => 5,
+                'cantidad' => 1,
+            ]],
+        ];
+
+        $this->actingAs($empleado, 'sanctum')
+            ->putJson("/api/pos/ordenes/{$id}", $payload)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('referencia_pago');
+
+        $this->assertSame('abierta', Orden::find($id)->estado);
+        $this->assertEquals(10.0, (float) $insumo->fresh()->stock_actual);
+
+        // Con la referencia sí se cierra
+        $this->actingAs($empleado, 'sanctum')
+            ->putJson("/api/pos/ordenes/{$id}", $payload + ['referencia_pago' => '998877'])
+            ->assertOk();
+    }
+
     public function test_sync_usa_el_cliente_existente_y_no_crea_duplicados(): void
     {
         $empleado = User::factory()->create();

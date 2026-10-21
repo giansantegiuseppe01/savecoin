@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class PosController extends Controller
@@ -286,7 +287,12 @@ class PosController extends Controller
             $validated = $request->validate([
                 'estado' => 'required|in:abierta,cerrada,anulada',
                 'metodo_pago' => 'nullable|in:efectivo,tarjeta,transferencia,mixto',
-                'referencia_pago' => 'nullable|string|max:100',
+                // Una transferencia no se puede cerrar sin su referencia bancaria
+                'referencia_pago' => [
+                    'nullable', 'string', 'max:100',
+                    Rule::requiredIf(fn () => $request->input('estado') === 'cerrada'
+                        && $request->input('metodo_pago') === 'transferencia'),
+                ],
                 'subtotal' => 'nullable|numeric|min:0',
                 'descuento' => 'nullable|numeric|min:0',
                 'impuesto' => 'nullable|numeric|min:0',
