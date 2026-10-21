@@ -24,7 +24,7 @@ class DashboardController extends Controller
         $colaboradorId = $request->input('colaborador_id');
 
         $query = Orden::whereBetween('fecha_hora', [$fechaInicio, $fechaFin])
-            ->where('estado', '!=', 'anulada');
+            ->whereNotIn('estado', ['anulada', 'abierta']);
 
         if ($turno) {
             $query->where('turno', $turno);
@@ -44,17 +44,20 @@ class DashboardController extends Controller
         $stockAlerts = $stockAlertService->getAlertCounters();
         $stockBajoItems = $stockAlertService->getLowStockItems();
 
-        // KPIs (convertidos a BS)
-        $ventasBrutas = $ordens->where('tipo', 'venta')->sum('total') * $tasaCambio;
-        $reembolsos = $ordens->where('tipo', 'reembolso')->sum('total') * $tasaCambio;
-        $descuentos = $ordens->sum('descuento') * $tasaCambio;
+        // KPIs (convertidos a BS con la tasa de cada orden, no con la tasa de hoy)
+        $enBs = fn ($orden, $campo) => (float) $orden->{$campo}
+            * ((float) $orden->tasa_cambio > 0 ? (float) $orden->tasa_cambio : $tasaCambio);
+
+        $ventasBrutas = $ordens->where('tipo', 'venta')->sum(fn ($o) => $enBs($o, 'total'));
+        $reembolsos = $ordens->where('tipo', 'reembolso')->sum(fn ($o) => $enBs($o, 'total'));
+        $descuentos = $ordens->sum(fn ($o) => $enBs($o, 'descuento'));
         $ventasNetas = $ventasBrutas - $descuentos;
-        $costoInsumos = $ordens->sum('costo_insumos') * $tasaCambio;
+        $costoInsumos = $ordens->sum(fn ($o) => $enBs($o, 'costo_insumos'));
         $beneficioBruto = $ventasNetas - $costoInsumos;
 
         // Datos para gráfica (ventas por día)
         $ventasPorDia = Orden::whereBetween('fecha_hora', [$fechaInicio, $fechaFin])
-            ->where('estado', '!=', 'anulada')
+            ->whereNotIn('estado', ['anulada', 'abierta'])
             ->where('tipo', 'venta')
             ->select(
                 DB::raw('DATE(fecha_hora) as fecha'),
@@ -69,7 +72,25 @@ class DashboardController extends Controller
             ->get();
 
         // Datos para tabla desglose diario
-        $desgloseDiario = $ventasPorDia;
+        // (ya en Bs, con la tasa de cada orden)
+        $desgloseDiario = $ordens->where('tipo', 'venta')
+            ->groupBy(fn ($o) => $o->fecha_hora->toDateString())
+            ->sortKeys()
+            ->map(function ($grupo, $fecha) use ($enBs) {
+                $bruto = $grupo->sum(fn ($o) => $enBs($o, 'total'));
+                $descuento = $grupo->sum(fn ($o) => $enBs($o, 'descuento'));
+                $costo = $grupo->sum(fn ($o) => $enBs($o, 'costo_insumos'));
+
+                return (object) [
+                    'fecha' => $fecha,
+                    'bruto' => $bruto,
+                    'descuento' => $descuento,
+                    'neto' => $bruto - $descuento,
+                    'costo_insumos' => $costo,
+                    'beneficio' => $bruto - $descuento - $costo,
+                ];
+            })
+            ->values();
 
         // Guardar filtros para PDF
         $filtros = [
@@ -110,7 +131,7 @@ class DashboardController extends Controller
         $colaboradorId = $request->input('colaborador_id');
 
         $query = Orden::whereBetween('fecha_hora', [$fechaInicio, $fechaFin])
-            ->where('estado', '!=', 'anulada');
+            ->whereNotIn('estado', ['anulada', 'abierta']);
 
         if ($turno) {
             $query->where('turno', $turno);

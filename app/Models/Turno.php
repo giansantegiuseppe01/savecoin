@@ -84,6 +84,21 @@ class Turno extends Model
     }
 
     /**
+     * Total de las ventas cerradas del turno en bolívares. Cada orden se convierte con
+     * su propia tasa de cambio (la vigente cuando se vendió); `total_ventas` queda en USD.
+     */
+    public function totalVentasBs(): float
+    {
+        $tasaActual = (float) Configuracion::getTasaCambio();
+
+        return round($this->ordens()->where('estado', 'cerrada')->get()->sum(function ($orden) use ($tasaActual) {
+            $tasa = (float) $orden->tasa_cambio > 0 ? (float) $orden->tasa_cambio : $tasaActual;
+
+            return (float) $orden->total * $tasa;
+        }), 2);
+    }
+
+    /**
      * Generar descripción para libro contable
      */
     public function getDescripcionContable(): string

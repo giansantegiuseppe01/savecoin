@@ -184,12 +184,12 @@
                             @forelse($desgloseDiario as $dia)
                             <tr>
                                 <td>{{ \Carbon\Carbon::parse($dia->fecha)->format('d/m/Y') }}</td>
-                                <td class="text-end">Bs {{ number_format($dia->bruto * $tasaCambio, 2) }}</td>
-                                <td class="text-end text-danger">Bs {{ number_format($dia->descuento * $tasaCambio, 2) }}</td>
-                                <td class="text-end fw-bold">Bs {{ number_format($dia->neto * $tasaCambio, 2) }}</td>
-                                <td class="text-end">Bs {{ number_format($dia->costo_insumos * $tasaCambio, 2) }}</td>
+                                <td class="text-end">Bs {{ number_format($dia->bruto, 2) }}</td>
+                                <td class="text-end text-danger">Bs {{ number_format($dia->descuento, 2) }}</td>
+                                <td class="text-end fw-bold">Bs {{ number_format($dia->neto, 2) }}</td>
+                                <td class="text-end">Bs {{ number_format($dia->costo_insumos, 2) }}</td>
                                 <td class="text-end fw-bold {{ $dia->beneficio >= 0 ? 'text-success' : 'text-danger' }}">
-                                    Bs {{ number_format($dia->beneficio * $tasaCambio, 2) }}
+                                    Bs {{ number_format($dia->beneficio, 2) }}
                                 </td>
                             </tr>
                             @empty
@@ -201,11 +201,11 @@
                         <tfoot class="table-dark">
                             <tr>
                                 <th class="fw-bold">TOTAL</th>
-                                <th class="text-end fw-bold">Bs {{ number_format($desgloseDiario->sum('bruto') * $tasaCambio, 2) }}</th>
-                                <th class="text-end fw-bold">Bs {{ number_format($desgloseDiario->sum('descuento') * $tasaCambio, 2) }}</th>
-                                <th class="text-end fw-bold">Bs {{ number_format($desgloseDiario->sum('neto') * $tasaCambio, 2) }}</th>
-                                <th class="text-end fw-bold">Bs {{ number_format($desgloseDiario->sum('costo_insumos') * $tasaCambio, 2) }}</th>
-                                <th class="text-end fw-bold">Bs {{ number_format($desgloseDiario->sum('beneficio') * $tasaCambio, 2) }}</th>
+                                <th class="text-end fw-bold">Bs {{ number_format($desgloseDiario->sum('bruto'), 2) }}</th>
+                                <th class="text-end fw-bold">Bs {{ number_format($desgloseDiario->sum('descuento'), 2) }}</th>
+                                <th class="text-end fw-bold">Bs {{ number_format($desgloseDiario->sum('neto'), 2) }}</th>
+                                <th class="text-end fw-bold">Bs {{ number_format($desgloseDiario->sum('costo_insumos'), 2) }}</th>
+                                <th class="text-end fw-bold">Bs {{ number_format($desgloseDiario->sum('beneficio'), 2) }}</th>
                             </tr>
                         </tfoot>
                     </table>

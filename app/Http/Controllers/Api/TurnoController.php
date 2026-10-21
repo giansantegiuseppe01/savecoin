@@ -130,12 +130,16 @@ class TurnoController extends Controller
                     Log::error('Categoría Ventas no encontrada');
                 }
 
+                // El libro contable está en bolívares y total_ventas está en USD:
+                // se convierte con la tasa de cada orden (antes se asentaba el monto en USD).
+                $montoBs = $turno->totalVentasBs();
+
                 LibroContable::create([
                     'fecha' => now()->toDateString(),
                     'tipo_movimiento' => 'entrada',
-                    'monto' => $turno->total_ventas,
-                    'descripcion' => $turno->getDescripcionContable(),
-                    'saldo_despues' => $this->calcularSaldoNuevo($turno->total_ventas),
+                    'monto' => $montoBs,
+                    'descripcion' => $turno->getDescripcionContable().' (USD '.number_format((float) $turno->total_ventas, 2).')',
+                    'saldo_despues' => $this->calcularSaldoNuevo($montoBs),
                     'categoria_id' => $categoriaVentas ? $categoriaVentas->id : null,
                     'referencia' => 'turno_'.$turno->id,
                     'user_id' => Auth::id(),
