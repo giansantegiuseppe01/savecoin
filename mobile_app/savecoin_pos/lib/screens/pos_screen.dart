@@ -342,11 +342,12 @@ class _POSScreenState extends State<POSScreen> {
                                 : GridView.builder(
                                     padding: const EdgeInsets.all(16),
                                     gridDelegate:
-                                        const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 3,
+                                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                                      maxCrossAxisExtent: 200,
                                       crossAxisSpacing: 16,
                                       mainAxisSpacing: 16,
-                                      childAspectRatio: 0.8,
+                                      // Alto fijo: con proporción fija el texto se salía de la tarjeta
+                                      mainAxisExtent: 235,
                                     ),
                                     itemCount: productProvider.productos.length,
                                     itemBuilder: (context, index) {

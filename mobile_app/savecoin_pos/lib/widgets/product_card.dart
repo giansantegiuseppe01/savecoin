@@ -25,7 +25,6 @@ class ProductCard extends StatelessWidget {
           children: [
             // Imagen del producto
             Expanded(
-              flex: 3,
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.grey[200],
@@ -53,14 +52,12 @@ class ProductCard extends StatelessWidget {
             ),
             
             // Información del producto
-            Expanded(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                     Text(
                       producto.nombre,
                       style: const TextStyle(
@@ -80,6 +77,7 @@ class ProductCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                    const SizedBox(height: 2),
                     Text(
                       '\$${producto.precioVenta.toStringAsFixed(2)}',
                       style: TextStyle(
@@ -90,7 +88,6 @@ class ProductCard extends StatelessWidget {
                     ),
                   ],
                 ),
-              ),
             ),
           ],
         ),
