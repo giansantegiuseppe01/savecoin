@@ -61,7 +61,7 @@ class CartPanel extends StatelessWidget {
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.blue[700],
             ),
@@ -82,6 +82,8 @@ class CartPanel extends StatelessWidget {
                 if (itemCount > 0)
                   Chip(
                     label: Text('$itemCount items'),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     backgroundColor: Colors.white,
                     labelStyle: TextStyle(color: Colors.blue[700]),
                   ),
@@ -91,7 +93,7 @@ class CartPanel extends StatelessWidget {
           
           // Selección de cliente
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.grey[100],
               border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
@@ -130,7 +132,7 @@ class CartPanel extends StatelessWidget {
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(6),
                     itemCount: cartItems.length,
                     itemBuilder: (context, index) {
                       final item = cartItems[index];
@@ -147,7 +149,7 @@ class CartPanel extends StatelessWidget {
           
           // Totales
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.grey[50],
               border: Border(top: BorderSide(color: Colors.grey[300]!)),
@@ -161,7 +163,7 @@ class CartPanel extends StatelessWidget {
                     label: 'Impuesto (${(kIvaRate * 100).round()}%)',
                     value: '\$${impuesto.toStringAsFixed(2)}',
                   ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 2),
                 _TotalRow(
                   label: 'Total',
                   value: '\$${total.toStringAsFixed(2)}',
@@ -172,35 +174,42 @@ class CartPanel extends StatelessWidget {
             ),
           ),
 
-          // Botones de acción
+          // Botones de acción (compactos para dejar espacio a la lista de items)
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (itemCount > 0) ...[
-                  ElevatedButton.icon(
-                    onPressed: busy ? null : onSendToKitchen,
-                    icon: const Icon(Icons.restaurant),
-                    label: Text(ordenEnEdicion == null
-                        ? 'Enviar a Cocina'
-                        : 'Guardar y Enviar a Cocina'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    onPressed: busy ? null : onPrintPreCuenta,
-                    icon: const Icon(Icons.receipt),
-                    label: const Text('Imprimir Pre-cuenta'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: busy ? null : onSendToKitchen,
+                          icon: const Icon(Icons.restaurant, size: 18),
+                          label: Text(ordenEnEdicion == null ? 'Cocina' : 'Guardar',
+                              overflow: TextOverflow.ellipsis),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: busy ? null : onPrintPreCuenta,
+                          icon: const Icon(Icons.receipt, size: 18),
+                          label: const Text('Pre-cuenta', overflow: TextOverflow.ellipsis),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -217,7 +226,7 @@ class CartPanel extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 4),
                       IconButton(
                         onPressed: busy ? null : onClearCart,
                         icon: const Icon(Icons.delete),
@@ -485,61 +494,61 @@ class _CartItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const compacto = BoxConstraints(minWidth: 32, minHeight: 32);
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 6),
       child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
                     item.producto.nombre,
                     style: const TextStyle(fontWeight: FontWeight.bold),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  onPressed: onRemove,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
+                  Text(
+                    '\$${item.producto.precioVenta.toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('\$${item.producto.precioVenta.toStringAsFixed(2)}'),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.remove_circle_outline),
-                      onPressed: () => onUpdateCantidad(item.cantidad - 1),
-                      iconSize: 24,
-                    ),
-                    Text(
-                      '${item.cantidad}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add_circle_outline),
-                      onPressed: () => onUpdateCantidad(item.cantidad + 1),
-                      iconSize: 24,
-                    ),
-                  ],
-                ),
-                Text(
-                  '\$${item.subtotal.toStringAsFixed(2)}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ],
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline),
+              onPressed: () => onUpdateCantidad(item.cantidad - 1),
+              iconSize: 22,
+              padding: EdgeInsets.zero,
+              constraints: compacto,
+            ),
+            Text(
+              '${item.cantidad}',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: () => onUpdateCantidad(item.cantidad + 1),
+              iconSize: 22,
+              padding: EdgeInsets.zero,
+              constraints: compacto,
+            ),
+            SizedBox(
+              width: 54,
+              child: Text(
+                '\$${item.subtotal.toStringAsFixed(2)}',
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              onPressed: onRemove,
+              padding: EdgeInsets.zero,
+              constraints: compacto,
             ),
           ],
         ),
@@ -564,7 +573,7 @@ class _TotalRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
