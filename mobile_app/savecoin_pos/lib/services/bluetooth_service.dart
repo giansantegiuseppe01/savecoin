@@ -508,6 +508,103 @@ class BluetoothService {
     }
   }
 
+  // Reporte de cierre de turno: ventas totales y recaudado por método de pago
+  Future<void> printCierreTurno(Map<String, dynamic> resumen) async {
+    if (isWeb) {
+      throw Exception('WEB_SIMULATION:cierre_turno');
+    }
+
+    if (!isConnected || _printCharacteristic == null) {
+      throw Exception('Impresora no conectada');
+    }
+
+    try {
+      final profile = await CapabilityProfile.load();
+      final generator = Generator(PaperSize.mm58, profile);
+      final printer = _createPrinter();
+
+      double num(dynamic v) => (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0;
+      String fecha(dynamic v) {
+        final d = DateTime.tryParse('$v');
+        return d == null ? '-' : _formatDate(d.toLocal());
+      }
+
+      String nombreMetodo(String m) {
+        switch (m) {
+          case 'efectivo':
+            return 'Efectivo';
+          case 'transferencia':
+            return 'Transferencia';
+          case 'tarjeta':
+            return 'Tarjeta';
+          case 'mixto':
+            return 'Mixto';
+          default:
+            return 'Sin método';
+        }
+      }
+
+      List<int> bytes = [];
+
+      bytes += generator.text('SAVECOIN POS',
+          styles: PosStyles(
+            align: PosAlign.center,
+            bold: true,
+            height: PosTextSize.size2,
+            width: PosTextSize.size2,
+          ));
+      bytes += generator.text('REPORTE DE CIERRE DE TURNO',
+          styles: PosStyles(align: PosAlign.center, bold: true));
+      bytes += generator.hr();
+      bytes += generator.text('Usuario: ${resumen['usuario'] ?? '-'}');
+      bytes += generator.text('Apertura: ${fecha(resumen['hora_apertura'])}');
+      bytes += generator.text('Cierre: ${fecha(resumen['hora_cierre'])}');
+      bytes += generator.text('Ordenes cobradas: ${resumen['numero_ordenes'] ?? 0}');
+      bytes += generator.hr();
+      bytes += generator.text('RECAUDADO POR METODO',
+          styles: PosStyles(align: PosAlign.center, bold: true));
+
+      final metodos = (resumen['metodos'] as List?) ?? [];
+      if (metodos.isEmpty) {
+        bytes += generator.text('Sin ventas en este turno',
+            styles: PosStyles(align: PosAlign.center));
+      }
+      for (final m in metodos) {
+        bytes += generator.text(
+            '${nombreMetodo('${m['metodo']}')} (${m['ordenes']})',
+            styles: PosStyles(bold: true));
+        bytes += generator.text('USD ${num(m['total_usd']).toStringAsFixed(2)}',
+            styles: PosStyles(align: PosAlign.right));
+        bytes += generator.text('Bs ${num(m['total_bs']).toStringAsFixed(2)}',
+            styles: PosStyles(align: PosAlign.right));
+      }
+
+      bytes += generator.hr();
+      bytes += generator.text('TOTAL VENTAS',
+          styles: PosStyles(align: PosAlign.center, bold: true));
+      bytes += generator.text('USD ${num(resumen['total_usd']).toStringAsFixed(2)}',
+          styles: PosStyles(
+            align: PosAlign.right,
+            bold: true,
+            height: PosTextSize.size2,
+          ));
+      bytes += generator.text('Bs ${num(resumen['total_bs']).toStringAsFixed(2)}',
+          styles: PosStyles(
+            align: PosAlign.right,
+            bold: true,
+            height: PosTextSize.size2,
+          ));
+      bytes += generator.hr();
+      bytes += generator.feed(2);
+      bytes += generator.cut();
+
+      await printer.printBytes(Uint8List.fromList(bytes));
+    } catch (e) {
+      logd('Error imprimiendo cierre de turno: $e');
+      throw Exception('Error al imprimir: $e');
+    }
+  }
+
   // Reimprimir comprobante (con etiqueta de COPIA/REIMPRESIÓN)
   Future<void> reprintTicket(Orden orden, List<DetalleOrden> detalles, double tasaCambio, String metodoPago) async {
     if (isWeb) {

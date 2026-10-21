@@ -155,6 +155,7 @@ class TurnoController extends Controller
             return response()->json([
                 'message' => 'Turno cerrado exitosamente',
                 'data' => $turno->load('ordens'),
+                'resumen' => $turno->resumenCierre(),
             ]);
 
         } catch (ValidationException $e) {

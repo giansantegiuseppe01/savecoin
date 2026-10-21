@@ -10,6 +10,9 @@ class ShiftProvider with ChangeNotifier {
   String? _shiftId;
   DateTime? _shiftStartTime;
 
+  /// Resumen (ventas por método de pago) del último turno cerrado, para imprimirlo.
+  Map<String, dynamic>? lastClosingSummary;
+
   ShiftProvider(this._apiService);
 
   bool get isShiftOpen => _isShiftOpen;
@@ -84,6 +87,8 @@ class ShiftProvider with ChangeNotifier {
       final response = await _apiService.cerrarTurno();
 
       if (response['message'] == 'Turno cerrado exitosamente') {
+        final resumen = response['resumen'];
+        lastClosingSummary = resumen is Map ? Map<String, dynamic>.from(resumen) : null;
         _isShiftOpen = false;
         _shiftId = null;
         _shiftStartTime = null;

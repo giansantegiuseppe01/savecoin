@@ -89,4 +89,29 @@ class CierreTurnoLibroTest extends TestCase
         $this->assertEquals($esperado, (float) $viejo->fresh()->monto);
         $this->assertEquals($esperado, (float) $viejo->fresh()->saldo_despues);
     }
+
+    public function test_el_cierre_devuelve_resumen_por_metodo_de_pago(): void
+    {
+        $empleado = User::factory()->create();
+        $turno = $this->turnoConVentas($empleado, [[10, 650], [5, 700], [2, 700]]);
+        $ordenes = $turno->ordens()->orderBy('numero_recibo')->get();
+        $ordenes[0]->forceFill(['metodo_pago' => 'efectivo'])->save();
+        $ordenes[1]->forceFill(['metodo_pago' => 'transferencia'])->save();
+        $ordenes[2]->forceFill(['metodo_pago' => 'efectivo'])->save();
+
+        $resumen = $this->actingAs($empleado, 'sanctum')
+            ->postJson('/api/turnos/cerrar')
+            ->assertOk()
+            ->json('resumen');
+
+        $this->assertSame(3, $resumen['numero_ordenes']);
+        $this->assertEquals(17.0, $resumen['total_usd']);
+        $this->assertEquals(11400.0, $resumen['total_bs']); // 6500 + 3500 + 1400
+
+        $porMetodo = collect($resumen['metodos'])->keyBy('metodo');
+        $this->assertEquals(12.0, $porMetodo['efectivo']['total_usd']);
+        $this->assertEquals(7900.0, $porMetodo['efectivo']['total_bs']);
+        $this->assertSame(2, $porMetodo['efectivo']['ordenes']);
+        $this->assertEquals(3500.0, $porMetodo['transferencia']['total_bs']);
+    }
 }

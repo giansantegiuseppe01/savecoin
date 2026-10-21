@@ -9,6 +9,7 @@ import '../providers/order_provider.dart';
 import '../providers/product_provider.dart';
 import '../providers/shift_provider.dart';
 import '../services/api_service.dart';
+import '../services/bluetooth_service.dart';
 import '../utils/log.dart';
 import '../widgets/cart_panel.dart';
 import '../widgets/category_sidebar.dart';
@@ -173,6 +174,9 @@ class _POSScreenState extends State<POSScreen> {
 
   Future<void> _cerrarTurno() async {
     final shiftProvider = context.read<ShiftProvider>();
+    // El ScaffoldMessenger vive en MaterialApp: sigue disponible aunque esta pantalla
+    // se cierre mientras se imprime el reporte.
+    final messenger = ScaffoldMessenger.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -199,7 +203,22 @@ class _POSScreenState extends State<POSScreen> {
       context.read<CartProvider>().clear();
       context.read<OrderProvider>().clearCurrentOrden();
       // No hay que navegar: al cerrarse el turno, AuthGate muestra la pantalla de inicio
-      _aviso('Turno cerrado exitosamente');
+      final resumen = shiftProvider.lastClosingSummary;
+      var avisoImpresion = '';
+      if (resumen != null) {
+        try {
+          await BluetoothService().printCierreTurno(resumen);
+        } catch (e) {
+          final texto = e.toString();
+          if (!texto.contains('WEB_SIMULATION')) {
+            avisoImpresion = ' (no se pudo imprimir el reporte: impresora no disponible)';
+          }
+        }
+      }
+      messenger.showSnackBar(SnackBar(
+        content: Text('Turno cerrado exitosamente$avisoImpresion'),
+        backgroundColor: avisoImpresion.isNotEmpty ? Colors.orange[800] : null,
+      ));
     } else {
       _aviso('Error al cerrar turno', error: true);
     }
