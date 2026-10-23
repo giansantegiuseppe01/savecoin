@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Cliente;
 use App\Models\DetalleOrden;
 use App\Models\Orden;
+use App\Models\Producto;
+use App\Services\InventarioService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -111,6 +113,32 @@ class SyncController extends Controller
                             'synced_at' => now(),
                             'is_local' => false,
                         ]);
+                    }
+
+                    // Las ventas hechas sin conexión también descuentan inventario (combos incluidos).
+                    // Solo ocurre al crear la orden: si ya existía no se vuelve a descontar.
+                    if ($ordenData['estado'] === 'cerrada' && $ordenData['tipo'] === 'venta') {
+                        $costo = 0.0;
+                        $advertencias = [];
+                        foreach ($ordenData['detalles'] as $detalleData) {
+                            $producto = isset($detalleData['producto_id'])
+                                ? Producto::with(['insumos', 'componentes'])->find($detalleData['producto_id'])
+                                : null;
+                            if (! $producto) {
+                                continue;
+                            }
+                            $costo += app(InventarioService::class)->descontarVenta(
+                                $producto,
+                                (float) $detalleData['cantidad'],
+                                $ordenId,
+                                'recibo #'.$orden->numero_recibo,
+                                auth()->id(),
+                                $advertencias,
+                            );
+                        }
+                        $orden->costo_insumos = $costo;
+                        $orden->beneficio_bruto = (float) $ordenData['total'] - $costo;
+                        $orden->save();
                     }
                 }
             }

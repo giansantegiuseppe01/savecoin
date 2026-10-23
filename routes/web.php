@@ -112,6 +112,7 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
     // API routes for productos
     Route::get('/api/productos/insumos', [ProductoController::class, 'getInsumos']);
+    Route::get('/api/productos/disponibles', [ProductoController::class, 'getProductosDisponibles']);
 
     // Libro Contable routes
     Route::prefix('libro-contable')->name('libro-contable.')->group(function () {

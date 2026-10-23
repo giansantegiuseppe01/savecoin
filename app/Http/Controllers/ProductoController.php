@@ -33,12 +33,12 @@ class ProductoController extends Controller
             $query->where('activo', false);
         }
 
-        $productos = $query->with('insumos')->orderBy('nombre')->paginate(20);
+        $productos = $query->with(['insumos', 'componentes'])->orderBy('nombre')->paginate(20);
 
         // KPIs
         $totalProductos = Producto::count();
         $productosActivos = Producto::where('activo', true)->count();
-        $productosCompuestos = Producto::whereHas('insumos')->count();
+        $productosCompuestos = Producto::whereHas('insumos')->orWhereHas('componentes')->count();
 
         $categorias = Producto::distinct()->pluck('categoria')->filter();
 
@@ -68,10 +68,14 @@ class ProductoController extends Controller
                 'insumos.*.insumo_id' => 'exists:insumos,id',
                 'insumos.*.cantidad_requerida' => 'numeric|min:0.0001',
                 'insumos.*.unidad_medida' => 'nullable|string|max:50',
+                'componentes' => 'array',
+                'componentes.*.producto_id' => 'required|exists:productos,id',
+                'componentes.*.cantidad' => 'required|numeric|min:0.0001',
             ]);
 
             $preparadoEnCocina = $request->has('preparado_en_cocina') && $request->preparado_en_cocina == '1';
             $esCompuesto = $request->has('es_compuesto') && $request->es_compuesto == '1';
+            $esCombo = $request->has('es_combo') && $request->es_combo == '1';
 
             // Calcular costo de producción si es compuesto
             $costoProduccion = 0;
@@ -113,6 +117,8 @@ class ProductoController extends Controller
                     ]);
                 }
             }
+
+            $this->guardarComponentes($producto, $esCombo ? ($validated['componentes'] ?? []) : []);
 
             DB::commit();
 
@@ -157,10 +163,14 @@ class ProductoController extends Controller
                 'insumos.*.insumo_id' => 'exists:insumos,id',
                 'insumos.*.cantidad_requerida' => 'numeric|min:0.0001',
                 'insumos.*.unidad_medida' => 'nullable|string|max:50',
+                'componentes' => 'array',
+                'componentes.*.producto_id' => 'required|exists:productos,id',
+                'componentes.*.cantidad' => 'required|numeric|min:0.0001',
             ]);
 
             $preparadoEnCocina = $request->has('preparado_en_cocina') && $request->preparado_en_cocina == '1';
             $esCompuesto = $request->has('es_compuesto') && $request->es_compuesto == '1';
+            $esCombo = $request->has('es_combo') && $request->es_combo == '1';
 
             $producto = Producto::findOrFail($id);
 
@@ -206,6 +216,8 @@ class ProductoController extends Controller
                 }
             }
 
+            $this->guardarComponentes($producto, $esCombo ? ($validated['componentes'] ?? []) : []);
+
             DB::commit();
 
             return response()->json([
@@ -236,6 +248,15 @@ class ProductoController extends Controller
     {
         try {
             $producto = Producto::findOrFail($id);
+
+            $combos = $producto->combos()->pluck('nombre');
+            if ($combos->isNotEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede eliminar: es parte del combo '.$combos->implode(', ').'. Quítalo del combo primero.',
+                ], 422);
+            }
+
             $producto->delete();
 
             return response()->json([
@@ -254,7 +275,7 @@ class ProductoController extends Controller
 
     public function show($id)
     {
-        $producto = Producto::with('insumos')->findOrFail($id);
+        $producto = Producto::with(['insumos', 'componentes'])->findOrFail($id);
 
         // Return JSON for AJAX requests
         if (request()->expectsJson()) {
@@ -262,6 +283,45 @@ class ProductoController extends Controller
         }
 
         return view('productos.show', compact('producto'));
+    }
+
+    /**
+     * Reemplaza los productos incluidos de un combo y recalcula su costo de producción.
+     *
+     * @param  array<int,array{producto_id:int|string,cantidad:float|int|string}>  $componentes
+     */
+    private function guardarComponentes(Producto $producto, array $componentes): void
+    {
+        $producto->componentes()->detach();
+
+        $sync = [];
+        foreach ($componentes as $fila) {
+            $componente = Producto::findOrFail($fila['producto_id']);
+
+            if ($componente->id === $producto->id || $componente->incluyeA($producto->id)) {
+                throw ValidationException::withMessages([
+                    'componentes' => "\"{$componente->nombre}\" no puede incluirse en este combo porque lo contiene (referencia circular).",
+                ]);
+            }
+
+            // Si el mismo producto se repite, se suman las cantidades
+            $sync[$componente->id] = ['cantidad' => ($sync[$componente->id]['cantidad'] ?? 0) + (float) $fila['cantidad']];
+        }
+
+        $producto->componentes()->attach($sync);
+
+        $producto = Producto::with(['insumos', 'componentes'])->findOrFail($producto->id);
+        $producto->update(['costo_produccion' => $producto->costoCalculado()]);
+    }
+
+    public function getProductosDisponibles(Request $request)
+    {
+        return response()->json(
+            Producto::where('activo', true)
+                ->when($request->input('excluir'), fn ($q, $id) => $q->where('id', '!=', $id))
+                ->orderBy('nombre')
+                ->get(['id', 'nombre', 'codigo', 'precio_venta'])
+        );
     }
 
     public function getInsumos()

@@ -9,6 +9,7 @@ use App\Models\DetalleOrden;
 use App\Models\Orden;
 use App\Models\Producto;
 use App\Models\Turno;
+use App\Services\InventarioService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -22,7 +23,7 @@ class PosController extends Controller
     public function productos(): JsonResponse
     {
         $productos = Producto::where('activo', true)
-            ->with('insumos')
+            ->with(['insumos', 'componentes'])
             ->get();
 
         return response()->json($productos);
@@ -83,35 +84,16 @@ class PosController extends Controller
             // Si la orden está cerrada, deducir stock y calcular costo
             if ($estado === 'cerrada') {
                 foreach ($validated['detalles'] as $detalle) {
-                    $producto = Producto::with('insumos')->findOrFail($detalle['producto_id']);
-                    $cantidad = $detalle['cantidad'];
+                    $producto = Producto::with(['insumos', 'componentes'])->findOrFail($detalle['producto_id']);
 
-                    $insumosProducto = $producto->insumos;
-                    foreach ($insumosProducto as $insumo) {
-                        $cantidadRequerida = $insumo->pivot->cantidad_requerida;
-                        $cantidadTotal = $cantidadRequerida * $cantidad;
-
-                        if ($insumo->stock_actual < $cantidadTotal) {
-                            $advertencias[] = "Stock insuficiente para {$insumo->nombre}: disponible {$insumo->stock_actual}, requerido {$cantidadTotal}";
-                        }
-
-                        $costoInsumosTotal += $insumo->costo_unitario * $cantidadTotal;
-
-                        $stockAnterior = $insumo->stock_actual;
-                        $insumo->stock_actual -= $cantidadTotal;
-                        $insumo->save();
-
-                        BitacoraInventario::create([
-                            'insumo_id' => $insumo->id,
-                            'orden_id' => null,
-                            'tipo_movimiento' => 'salida',
-                            'cantidad_anterior' => $stockAnterior,
-                            'cantidad_movimiento' => $cantidadTotal,
-                            'cantidad_nueva' => $insumo->stock_actual,
-                            'motivo' => 'Venta en recibo #'.$orden->numero_recibo.' - Producto: '.$producto->nombre,
-                            'user_id' => Auth::id(),
-                        ]);
-                    }
+                    $costoInsumosTotal += app(InventarioService::class)->descontarVenta(
+                        $producto,
+                        (float) $detalle['cantidad'],
+                        null,
+                        'nueva orden',
+                        Auth::id(),
+                        $advertencias,
+                    );
                 }
             }
 
@@ -367,35 +349,16 @@ class PosController extends Controller
                 $advertencias = [];
 
                 foreach ($detalles as $detalleData) {
-                    $producto = Producto::with('insumos')->findOrFail($detalleData['producto_id']);
-                    $cantidad = $detalleData['cantidad'];
+                    $producto = Producto::with(['insumos', 'componentes'])->findOrFail($detalleData['producto_id']);
 
-                    $insumosProducto = $producto->insumos;
-                    foreach ($insumosProducto as $insumo) {
-                        $cantidadRequerida = $insumo->pivot->cantidad_requerida;
-                        $cantidadTotal = $cantidadRequerida * $cantidad;
-
-                        if ($insumo->stock_actual < $cantidadTotal) {
-                            $advertencias[] = "Stock insuficiente para {$insumo->nombre}: disponible {$insumo->stock_actual}, requerido {$cantidadTotal}";
-                        }
-
-                        $costoInsumosTotal += $insumo->costo_unitario * $cantidadTotal;
-
-                        $stockAnterior = $insumo->stock_actual;
-                        $insumo->stock_actual -= $cantidadTotal;
-                        $insumo->save();
-
-                        BitacoraInventario::create([
-                            'insumo_id' => $insumo->id,
-                            'orden_id' => $orden->id,
-                            'tipo_movimiento' => 'salida',
-                            'cantidad_anterior' => $stockAnterior,
-                            'cantidad_movimiento' => $cantidadTotal,
-                            'cantidad_nueva' => $insumo->stock_actual,
-                            'motivo' => 'Venta en recibo #'.$orden->numero_recibo.' - Producto: '.$producto->nombre,
-                            'user_id' => Auth::id(),
-                        ]);
-                    }
+                    $costoInsumosTotal += app(InventarioService::class)->descontarVenta(
+                        $producto,
+                        (float) $detalleData['cantidad'],
+                        $orden->id,
+                        'recibo #'.$orden->numero_recibo,
+                        Auth::id(),
+                        $advertencias,
+                    );
                 }
 
                 $orden->costo_insumos = $costoInsumosTotal;

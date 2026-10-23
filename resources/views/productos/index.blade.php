@@ -96,7 +96,10 @@
                                 <td class="text-end">${{ number_format($producto->precio_venta, 2) }}</td>
                                 <td class="text-end">${{ number_format($producto->costo_produccion, 2) }}</td>
                                 <td>
-                                    @if($producto->insumos->count() > 0)
+                                    @if($producto->componentes->count() > 0)
+                                        <span class="badge bg-warning text-dark">Combo</span>
+                                        <br><small class="text-muted">{{ $producto->componentes->count() }} productos</small>
+                                    @elseif($producto->insumos->count() > 0)
                                         <span class="badge bg-info">Compuesto</span>
                                         <br><small class="text-muted">{{ $producto->insumos->count() }} insumos</small>
                                     @else
@@ -210,6 +213,29 @@
                         </div>
                     </div>
                     
+                    <div class="row mt-2">
+                        <div class="col-md-12">
+                            <div class="form-check">
+                                <input type="hidden" name="es_combo" value="0">
+                                <input class="form-check-input" type="checkbox" name="es_combo" id="esCombo" value="1" onchange="toggleComboSection()">
+                                <label class="form-check-label" for="esCombo">
+                                    <strong>¿Es un combo?</strong>
+                                    <br><small class="text-muted">Formado por otros productos. Ej: 2 perros calientes + 1 refresco. Al venderlo se descuenta el inventario de cada producto incluido.</small>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sección de Productos incluidos en el combo -->
+                    <div id="comboSection" class="d-none">
+                        <hr>
+                        <h6 class="mb-3"><i class="bi bi-box-seam me-2"></i>Combo - Productos incluidos</h6>
+                        <div id="componentesContainer"></div>
+                        <button type="button" class="btn btn-sm btn-outline-warning mt-2" onclick="agregarFilaComponente()">
+                            <i class="bi bi-plus me-1"></i>Agregar Producto al Combo
+                        </button>
+                    </div>
+
                     <!-- Sección de Insumos para Productos Compuestos -->
                     <div id="insumosSection" class="d-none">
                         <hr>
@@ -268,6 +294,63 @@ function cargarInsumos() {
 
 // Cargar insumos al inicio
 cargarInsumos();
+cargarProductosDisponibles();
+
+// ---- Combos: productos incluidos ----
+let productosDisponibles = [];
+let componentesFilaId = 0;
+
+function cargarProductosDisponibles(excluirId = '') {
+    const url = '/api/productos/disponibles' + (excluirId ? `?excluir=${encodeURIComponent(excluirId)}` : '');
+    return fetch(url, { headers: { 'Accept': 'application/json' } })
+        .then(r => r.json())
+        .then(data => { productosDisponibles = data; })
+        .catch(() => { productosDisponibles = []; });
+}
+
+function toggleComboSection(agregarFila = true) {
+    const activo = document.getElementById('esCombo').checked;
+    document.getElementById('comboSection').classList.toggle('d-none', !activo);
+    if (activo) {
+        if (agregarFila && document.querySelectorAll('.componente-row').length === 0) {
+            agregarFilaComponente();
+        }
+    } else {
+        document.getElementById('componentesContainer').innerHTML = '';
+    }
+}
+
+function agregarFilaComponente(data = null) {
+    const rowId = ++componentesFilaId;
+    const opciones = productosDisponibles.map(p =>
+        `<option value="${escapeHtml(p.id)}" ${data && String(data.producto_id) === String(p.id) ? 'selected' : ''}>
+            ${escapeHtml(p.nombre)} (${escapeHtml(p.codigo)}) - $${escapeHtml(p.precio_venta)}
+        </option>`
+    ).join('');
+
+    const row = document.createElement('div');
+    row.className = 'row mb-2 componente-row align-items-end';
+    row.id = `comp-${rowId}`;
+    row.innerHTML = `
+        <div class="col-md-8">
+            <label class="form-label small">Producto</label>
+            <select name="componentes[${rowId}][producto_id]" class="form-select form-select-sm" required>
+                <option value="">Seleccionar producto...</option>
+                ${opciones}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small">Cantidad</label>
+            <input type="number" name="componentes[${rowId}][cantidad]" class="form-control form-control-sm"
+                   step="0.0001" min="0.0001" value="${data ? escapeHtml(data.cantidad) : '1'}" required>
+        </div>
+        <div class="col-md-1">
+            <button type="button" class="btn btn-sm btn-danger" onclick="document.getElementById('comp-${rowId}').remove()">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>`;
+    document.getElementById('componentesContainer').appendChild(row);
+}
 
 function toggleInsumosSection(agregarFila = true) {
     const esCompuesto = document.getElementById('esCompuesto').checked;
@@ -354,6 +437,7 @@ function abrirModalEditar(productoId) {
     // Asegurar que los insumos estén cargados primero
     Promise.all([
         cargarInsumos(),
+        cargarProductosDisponibles(productoId),
         fetch(`/productos/${productoId}`, {
             headers: {
                 'Accept': 'application/json',
@@ -362,7 +446,7 @@ function abrirModalEditar(productoId) {
             }
         }).then(response => response.json())
     ])
-        .then(([, data]) => {
+        .then(([, , data]) => {
             console.log('Datos del producto:', data); // Debug
             console.log('Insumos disponibles:', insumosDisponibles); // Debug
             const form = document.getElementById('formProducto');
@@ -390,6 +474,20 @@ function abrirModalEditar(productoId) {
             form.querySelector('[name="categoria"]').value = data.categoria || '';
             form.querySelector('[name="tiempo_preparacion_minutos"]').value = data.tiempo_preparacion_minutos || 0;
             form.querySelector('[name="preparado_en_cocina"]').checked = data.preparado_en_cocina;
+
+            // Combo: productos incluidos
+            document.getElementById('componentesContainer').innerHTML = '';
+            const esCombo = data.componentes && data.componentes.length > 0;
+            document.getElementById('esCombo').checked = esCombo;
+            if (esCombo) {
+                toggleComboSection(false);
+                data.componentes.forEach(c => agregarFilaComponente({
+                    producto_id: c.id,
+                    cantidad: c.pivot.cantidad
+                }));
+            } else {
+                toggleComboSection(false);
+            }
 
             const esCompuesto = data.insumos && data.insumos.length > 0;
             document.getElementById('esCompuesto').checked = esCompuesto;
@@ -492,6 +590,9 @@ document.getElementById('agregarProductoModal').addEventListener('hidden.bs.moda
     document.getElementById('productoModalTitle').innerHTML = '<i class="bi bi-plus-circle me-2"></i>Agregar Producto';
     document.getElementById('insumosContainer').innerHTML = '';
     document.getElementById('insumosSection').classList.add('d-none');
+    document.getElementById('componentesContainer').innerHTML = '';
+    document.getElementById('comboSection').classList.add('d-none');
+    cargarProductosDisponibles();
 });
 </script>
 @endpush
