@@ -12,6 +12,7 @@ class AuthProvider with ChangeNotifier {
   String? _token;
   String? _userId;
   String? _userName;
+  String? _rol;
   bool _isAuthenticated = false;
   bool _isLoaded = false;
   String? _error;
@@ -25,6 +26,10 @@ class AuthProvider with ChangeNotifier {
   String? get token => _token;
   String? get userId => _userId;
   String? get userName => _userName;
+
+  /// Solo los administradores ven la sección de administración (inventario y fotos).
+  /// El servidor vuelve a comprobarlo en cada petición.
+  bool get isAdmin => _rol == 'admin';
   bool get isAuthenticated => _isAuthenticated;
 
   /// false mientras se lee la sesión guardada al abrir la app.
@@ -38,6 +43,7 @@ class AuthProvider with ChangeNotifier {
     _token = await _tokenStorage.read();
     _userId = prefs.getString('user_id');
     _userName = prefs.getString('user_name');
+    _rol = prefs.getString('user_rol');
     _isAuthenticated = _token != null;
 
     await _apiService.reloadConfig();
@@ -57,12 +63,18 @@ class AuthProvider with ChangeNotifier {
         _token = response['token'] as String;
         _userId = response['user']['id'].toString();
         _userName = response['user']['name']?.toString() ?? email;
+        _rol = response['user']['rol']?.toString();
         _isAuthenticated = true;
 
         await _tokenStorage.write(_token!);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('user_id', _userId!);
         await prefs.setString('user_name', _userName!);
+        if (_rol != null) {
+          await prefs.setString('user_rol', _rol!);
+        } else {
+          await prefs.remove('user_rol');
+        }
 
         // El mismo ApiService lo usan todos los providers
         _apiService.setToken(_token);
@@ -97,6 +109,7 @@ class AuthProvider with ChangeNotifier {
     _token = null;
     _userId = null;
     _userName = null;
+    _rol = null;
     _isAuthenticated = false;
     _apiService.setToken(null);
 
@@ -104,6 +117,7 @@ class AuthProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('user_id');
     await prefs.remove('user_name');
+    await prefs.remove('user_rol');
 
     // Volver a la raíz de la app, que muestra el login (ver AuthGate)
     appNavigatorKey.currentState?.popUntil((route) => route.isFirst);

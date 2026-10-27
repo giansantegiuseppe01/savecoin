@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/producto.dart';
@@ -103,6 +104,7 @@ class ApiService {
         'GET' => http.get(uri, headers: headers),
         'POST' => http.post(uri, headers: headers, body: encoded),
         'PUT' => http.put(uri, headers: headers, body: encoded),
+        'DELETE' => http.delete(uri, headers: headers),
         _ => throw ArgumentError('Método HTTP no soportado: $method'),
       };
 
@@ -309,5 +311,79 @@ class ApiService {
     }
     throw ApiException(_errorMessage(response, 'Error al cerrar turno'),
         statusCode: response.statusCode);
+  }
+
+  // ---- Administración (solo admin) ----
+
+  Future<List<Map<String, dynamic>>> getInsumosAdmin() async {
+    final response = await _send('GET', '/admin/insumos');
+
+    if (response.statusCode == 200) {
+      return (_decode(response) as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    }
+    throw ApiException(_errorMessage(response, 'Error al cargar el inventario'),
+        statusCode: response.statusCode);
+  }
+
+  /// Carga (entrada) o descarga (salida) de un insumo. Devuelve el insumo actualizado.
+  Future<Map<String, dynamic>> registrarMovimiento({
+    required String insumoId,
+    required String tipo,
+    required double cantidad,
+    required String motivo,
+  }) async {
+    final response = await _send('POST', '/admin/inventario/movimientos', body: {
+      'insumo_id': insumoId,
+      'tipo_movimiento': tipo,
+      'cantidad': cantidad,
+      'motivo': motivo,
+    });
+
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(_decode(response)['data'] as Map);
+    }
+    throw ApiException(_errorMessage(response, 'No se pudo registrar el movimiento'),
+        statusCode: response.statusCode);
+  }
+
+  /// Sube la foto de un producto (multipart). Devuelve la URL completa de la imagen.
+  Future<String?> subirImagenProducto(String productoId, Uint8List bytes, String nombreArchivo) async {
+    await ensureLoaded();
+
+    final request = http.MultipartRequest('POST', Uri.parse('$_baseUrl/admin/productos/$productoId/imagen'))
+      ..headers['Accept'] = 'application/json'
+      ..files.add(http.MultipartFile.fromBytes('imagen', bytes, filename: nombreArchivo));
+    if (hasToken) request.headers['Authorization'] = 'Bearer $_token';
+
+    try {
+      final streamed = await request.send().timeout(const Duration(seconds: 60));
+      final response = await http.Response.fromStream(streamed);
+
+      if (response.statusCode == 401 && hasToken) onUnauthorized?.call();
+
+      if (response.statusCode == 200) {
+        return _decode(response)['data']?['imagen_url']?.toString();
+      }
+      throw ApiException(_errorMessage(response, 'No se pudo subir la imagen'),
+          statusCode: response.statusCode);
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw ApiException('El servidor no respondió a tiempo');
+    } catch (e) {
+      logd('Error subiendo imagen: $e');
+      throw ApiException('Error de conexión: $e');
+    }
+  }
+
+  Future<void> eliminarImagenProducto(String productoId) async {
+    final response = await _send('DELETE', '/admin/productos/$productoId/imagen');
+
+    if (response.statusCode != 200) {
+      throw ApiException(_errorMessage(response, 'No se pudo quitar la imagen'),
+          statusCode: response.statusCode);
+    }
   }
 }

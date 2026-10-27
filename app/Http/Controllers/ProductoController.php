@@ -187,9 +187,8 @@ class ProductoController extends Controller
                 'precio_venta' => $validated['precio_venta'],
                 'costo_produccion' => $costoProduccion,
                 'categoria' => $validated['categoria'] ?? null,
-                'imagen_url' => $validated['imagen_url'] ?? null,
                 'preparado_en_cocina' => $preparadoEnCocina,
-            ]);
+            ] + (array_key_exists('imagen_url', $validated) ? ['imagen_url' => $validated['imagen_url']] : []));
 
             // Eliminar insumos existentes y agregar nuevos
             ProductoInsumo::where('producto_id', $producto->id)->delete();

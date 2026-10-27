@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/cliente.dart';
 import '../models/detalle_orden.dart';
+import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../providers/client_provider.dart';
 import '../providers/config_provider.dart';
@@ -15,6 +16,7 @@ import '../widgets/cart_panel.dart';
 import '../widgets/category_sidebar.dart';
 import '../widgets/order_widgets.dart';
 import '../widgets/product_card.dart';
+import 'admin_screen.dart';
 import 'client_selector_screen.dart';
 import 'closed_orders_screen.dart';
 import 'config_screen.dart';
@@ -254,6 +256,15 @@ class _POSScreenState extends State<POSScreen> {
                     ),
                   ),
                 ),
+              ),
+            ),
+          if (context.watch<AuthProvider>().isAdmin)
+            IconButton(
+              icon: const Icon(Icons.admin_panel_settings),
+              tooltip: 'Administración',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AdminScreen()),
               ),
             ),
           IconButton(

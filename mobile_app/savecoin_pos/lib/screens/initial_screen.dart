@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/shift_provider.dart';
 import '../providers/auth_provider.dart';
+import 'admin_screen.dart';
 import 'config_screen.dart';
 
 class InitialScreen extends StatelessWidget {
@@ -19,7 +20,9 @@ class InitialScreen extends StatelessWidget {
           ),
         ),
         child: Center(
-          child: Consumer<ShiftProvider>(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Consumer<ShiftProvider>(
             builder: (context, shiftProvider, _) {
               return Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -47,8 +50,10 @@ class InitialScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 64),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 32,
+                    runSpacing: 24,
                     children: [
                       _buildActionButton(
                         context,
@@ -62,7 +67,17 @@ class InitialScreen extends StatelessWidget {
                           );
                         },
                       ),
-                      const SizedBox(width: 32),
+                      if (context.watch<AuthProvider>().isAdmin)
+                        _buildActionButton(
+                          context,
+                          icon: Icons.admin_panel_settings,
+                          label: 'Administración',
+                          color: Colors.indigo,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const AdminScreen()),
+                          ),
+                        ),
                       _buildActionButton(
                         context,
                         icon: Icons.play_circle,
@@ -101,6 +116,7 @@ class InitialScreen extends StatelessWidget {
                 ],
               );
             },
+            ),
           ),
         ),
       ),

@@ -1,10 +1,12 @@
 <?php
 
+use App\Http\Controllers\Api\AdminInventarioController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ClienteController; // ✅ Importado correctamente
 use App\Http\Controllers\Api\InsumoController;
 use App\Http\Controllers\Api\PosController;
+use App\Http\Controllers\Api\ProductoImagenController;
 use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\TurnoController;
@@ -53,6 +55,12 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 
     // Category routes
     Route::apiResource('categories', CategoryController::class);
+
+    // Administración desde la app móvil: inventario (carga/descarga) y foto de productos
+    Route::get('/admin/insumos', [AdminInventarioController::class, 'index']);
+    Route::post('/admin/inventario/movimientos', [AdminInventarioController::class, 'movimiento']);
+    Route::post('/admin/productos/{id}/imagen', [ProductoImagenController::class, 'store'])->whereNumber('id');
+    Route::delete('/admin/productos/{id}/imagen', [ProductoImagenController::class, 'destroy'])->whereNumber('id');
 
     // Eliminar clientes: solo administradores
     Route::delete('/clientes/{id}', [ClienteController::class, 'destroy'])

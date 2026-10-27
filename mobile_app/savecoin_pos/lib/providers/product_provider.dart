@@ -13,6 +13,10 @@ class ProductProvider with ChangeNotifier {
   String? _error;
 
   List<Producto> get productos => _filteredProductos;
+
+  /// Todos los productos activos, sin el filtro de categoría ni de búsqueda del POS.
+  List<Producto> get todosActivos => _productos.where((p) => p.activo).toList()
+    ..sort((a, b) => a.nombre.toLowerCase().compareTo(b.nombre.toLowerCase()));
   String? get selectedCategoria => _selectedCategoria;
   bool get isLoading => _isLoading;
   String? get error => _error;

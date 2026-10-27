@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -30,6 +31,20 @@ class Producto extends Model
         'activo' => 'boolean',
         'preparado_en_cocina' => 'boolean',
     ];
+
+    /**
+     * La imagen subida desde la app se guarda como ruta relativa (uploads/productos/x.jpg) y aquí se
+     * convierte en URL completa con el host de la petición, así sigue funcionando si cambia la IP
+     * del servidor. Una URL externa guardada antes se devuelve tal cual.
+     */
+    protected function imagenUrl(): Attribute
+    {
+        return Attribute::make(
+            get: fn (?string $value) => ($value === null || $value === '' || preg_match('#^https?://#i', $value))
+                ? $value
+                : url($value),
+        );
+    }
 
     public function insumos(): BelongsToMany
     {

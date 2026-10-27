@@ -55,4 +55,35 @@ class InventarioService
 
         return $costo;
     }
+
+    /**
+     * Registra una carga (entrada) o descarga (salida) manual de un insumo y la deja en la bitácora.
+     * Una salida no puede dejar el stock en negativo.
+     *
+     * @throws \DomainException si la salida supera el stock disponible
+     */
+    public function registrarMovimiento(Insumo $insumo, string $tipo, float $cantidad, string $motivo, ?int $userId): Insumo
+    {
+        $stockAnterior = (float) $insumo->stock_actual;
+
+        if ($tipo === 'salida' && $stockAnterior < $cantidad) {
+            throw new \DomainException("Stock insuficiente de {$insumo->nombre}: hay {$stockAnterior} y se intenta descargar {$cantidad}.");
+        }
+
+        $insumo->stock_actual = $tipo === 'entrada' ? $stockAnterior + $cantidad : $stockAnterior - $cantidad;
+        $insumo->save();
+
+        BitacoraInventario::create([
+            'insumo_id' => $insumo->id,
+            'orden_id' => null,
+            'tipo_movimiento' => $tipo,
+            'cantidad_anterior' => $stockAnterior,
+            'cantidad_movimiento' => $cantidad,
+            'cantidad_nueva' => $insumo->stock_actual,
+            'motivo' => $motivo,
+            'user_id' => $userId,
+        ]);
+
+        return $insumo;
+    }
 }
