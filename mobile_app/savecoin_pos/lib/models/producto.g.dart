@@ -26,7 +26,6 @@ class ProductoAdapter extends TypeAdapter<Producto> {
       imagenUrl: fields[6] as String?,
       activo: fields[7] as bool,
       preparadoEnCocina: fields[8] as bool,
-      tiempoPreparacionMinutos: fields[9] as int?,
       syncedAt: fields[10] as DateTime?,
       isLocal: fields[11] as bool,
     );
@@ -35,7 +34,7 @@ class ProductoAdapter extends TypeAdapter<Producto> {
   @override
   void write(BinaryWriter writer, Producto obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -54,8 +53,6 @@ class ProductoAdapter extends TypeAdapter<Producto> {
       ..write(obj.activo)
       ..writeByte(8)
       ..write(obj.preparadoEnCocina)
-      ..writeByte(9)
-      ..write(obj.tiempoPreparacionMinutos)
       ..writeByte(10)
       ..write(obj.syncedAt)
       ..writeByte(11)

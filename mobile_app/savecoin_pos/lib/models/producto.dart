@@ -32,9 +32,6 @@ class Producto extends HiveObject {
   @HiveField(8)
   bool preparadoEnCocina;
   
-  @HiveField(9)
-  int? tiempoPreparacionMinutos;
-  
   @HiveField(10)
   DateTime? syncedAt;
   
@@ -51,7 +48,6 @@ class Producto extends HiveObject {
     this.imagenUrl,
     this.activo = true,
     this.preparadoEnCocina = false,
-    this.tiempoPreparacionMinutos,
     this.syncedAt,
     this.isLocal = false,
   }) : id = id ?? const Uuid().v4();
@@ -72,7 +68,6 @@ factory Producto.fromJson(Map<String, dynamic> json) {
     imagenUrl: json['imagen_url'] as String?,
     activo: json['activo'] as bool? ?? true,
     preparadoEnCocina: json['preparado_en_cocina'] as bool? ?? false,
-    tiempoPreparacionMinutos: json['tiempo_preparacion_minutos'] as int?,
     syncedAt: json['synced_at'] != null 
         ? DateTime.parse(json['synced_at'] as String) 
         : DateTime.now(), // Marca la hora de la descarga
@@ -91,7 +86,6 @@ factory Producto.fromJson(Map<String, dynamic> json) {
       'imagen_url': imagenUrl,
       'activo': activo,
       'preparado_en_cocina': preparadoEnCocina,
-      'tiempo_preparacion_minutos': tiempoPreparacionMinutos,
       'is_local': isLocal,
     };
   }
@@ -105,7 +99,6 @@ factory Producto.fromJson(Map<String, dynamic> json) {
     String? imagenUrl,
     bool? activo,
     bool? preparadoEnCocina,
-    int? tiempoPreparacionMinutos,
     DateTime? syncedAt,
     bool? isLocal,
   }) {
@@ -119,7 +112,6 @@ factory Producto.fromJson(Map<String, dynamic> json) {
       imagenUrl: imagenUrl ?? this.imagenUrl,
       activo: activo ?? this.activo,
       preparadoEnCocina: preparadoEnCocina ?? this.preparadoEnCocina,
-      tiempoPreparacionMinutos: tiempoPreparacionMinutos ?? this.tiempoPreparacionMinutos,
       syncedAt: syncedAt ?? this.syncedAt,
       isLocal: isLocal ?? this.isLocal,
     );

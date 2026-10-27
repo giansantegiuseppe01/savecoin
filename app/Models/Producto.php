@@ -22,7 +22,6 @@ class Producto extends Model
         'imagen_url',
         'activo',
         'preparado_en_cocina',
-        'tiempo_preparacion_minutos',
     ];
 
     protected $casts = [

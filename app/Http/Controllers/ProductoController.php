@@ -63,7 +63,6 @@ class ProductoController extends Controller
                 'precio_venta' => 'required|numeric|min:0',
                 'categoria' => 'nullable|string|max:100',
                 'imagen_url' => 'nullable|url',
-                'tiempo_preparacion_minutos' => 'nullable|integer|min:0',
                 'insumos' => 'array',
                 'insumos.*.insumo_id' => 'exists:insumos,id',
                 'insumos.*.cantidad_requerida' => 'numeric|min:0.0001',
@@ -96,7 +95,6 @@ class ProductoController extends Controller
                 'imagen_url' => $validated['imagen_url'] ?? null,
                 'activo' => true,
                 'preparado_en_cocina' => $preparadoEnCocina,
-                'tiempo_preparacion_minutos' => $validated['tiempo_preparacion_minutos'] ?? 0,
             ]);
 
             // Guardar insumos si es compuesto
@@ -158,7 +156,6 @@ class ProductoController extends Controller
                 'precio_venta' => 'required|numeric|min:0',
                 'categoria' => 'nullable|string|max:100',
                 'imagen_url' => 'nullable|url',
-                'tiempo_preparacion_minutos' => 'nullable|integer|min:0',
                 'insumos' => 'array',
                 'insumos.*.insumo_id' => 'exists:insumos,id',
                 'insumos.*.cantidad_requerida' => 'numeric|min:0.0001',
@@ -192,7 +189,6 @@ class ProductoController extends Controller
                 'categoria' => $validated['categoria'] ?? null,
                 'imagen_url' => $validated['imagen_url'] ?? null,
                 'preparado_en_cocina' => $preparadoEnCocina,
-                'tiempo_preparacion_minutos' => $validated['tiempo_preparacion_minutos'] ?? 0,
             ]);
 
             // Eliminar insumos existentes y agregar nuevos

@@ -184,11 +184,6 @@
                             <label class="form-label">Categoría</label>
                             <input type="text" name="categoria" class="form-control">
                         </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Tiempo Preparación (min)</label>
-                            <input type="number" name="tiempo_preparacion_minutos" class="form-control" 
-                                   min="0" value="0">
-                        </div>
                     </div>
                     
                     <div class="row mb-3">
@@ -472,7 +467,6 @@ function abrirModalEditar(productoId) {
             form.querySelector('[name="descripcion"]').value = data.descripcion || '';
             form.querySelector('[name="precio_venta"]').value = data.precio_venta;
             form.querySelector('[name="categoria"]').value = data.categoria || '';
-            form.querySelector('[name="tiempo_preparacion_minutos"]').value = data.tiempo_preparacion_minutos || 0;
             form.querySelector('[name="preparado_en_cocina"]').checked = data.preparado_en_cocina;
 
             // Combo: productos incluidos
