@@ -523,7 +523,7 @@ class BluetoothService {
       final generator = Generator(PaperSize.mm58, profile);
       final printer = _createPrinter();
 
-      double num(dynamic v) => (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0;
+      double aNumero(dynamic v) => (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0;
       String fecha(dynamic v) {
         final d = DateTime.tryParse('$v');
         return d == null ? '-' : _formatDate(d.toLocal());
@@ -573,22 +573,22 @@ class BluetoothService {
         bytes += generator.text(
             '${nombreMetodo('${m['metodo']}')} (${m['ordenes']})',
             styles: PosStyles(bold: true));
-        bytes += generator.text('USD ${num(m['total_usd']).toStringAsFixed(2)}',
+        bytes += generator.text('USD ${aNumero(m['total_usd']).toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));
-        bytes += generator.text('Bs ${num(m['total_bs']).toStringAsFixed(2)}',
+        bytes += generator.text('Bs ${aNumero(m['total_bs']).toStringAsFixed(2)}',
             styles: PosStyles(align: PosAlign.right));
       }
 
       bytes += generator.hr();
       bytes += generator.text('TOTAL VENTAS',
           styles: PosStyles(align: PosAlign.center, bold: true));
-      bytes += generator.text('USD ${num(resumen['total_usd']).toStringAsFixed(2)}',
+      bytes += generator.text('USD ${aNumero(resumen['total_usd']).toStringAsFixed(2)}',
           styles: PosStyles(
             align: PosAlign.right,
             bold: true,
             height: PosTextSize.size2,
           ));
-      bytes += generator.text('Bs ${num(resumen['total_bs']).toStringAsFixed(2)}',
+      bytes += generator.text('Bs ${aNumero(resumen['total_bs']).toStringAsFixed(2)}',
           styles: PosStyles(
             align: PosAlign.right,
             bold: true,
