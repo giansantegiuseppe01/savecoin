@@ -136,9 +136,12 @@ class SyncController extends Controller
                                 $advertencias,
                             );
                         }
-                        $orden->costo_insumos = $costo;
-                        $orden->beneficio_bruto = (float) $ordenData['total'] - $costo;
-                        $orden->save();
+                        // Se actualiza por el UUID de la app: tras insertar, Eloquent reemplaza el id
+                        // del modelo en memoria por el que devuelve la base de datos.
+                        Orden::whereKey($ordenId)->update([
+                            'costo_insumos' => $costo,
+                            'beneficio_bruto' => (float) $ordenData['total'] - $costo,
+                        ]);
                     }
                 }
             }

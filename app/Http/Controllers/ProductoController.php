@@ -96,7 +96,7 @@ class ProductoController extends Controller
                 'imagen_url' => $validated['imagen_url'] ?? null,
                 'activo' => true,
                 'preparado_en_cocina' => $preparadoEnCocina,
-                'tiempo_preparacion_minutos' => $validated['tiempo_preparacion_minutos'] ?? null,
+                'tiempo_preparacion_minutos' => $validated['tiempo_preparacion_minutos'] ?? 0,
             ]);
 
             // Guardar insumos si es compuesto
@@ -192,7 +192,7 @@ class ProductoController extends Controller
                 'categoria' => $validated['categoria'] ?? null,
                 'imagen_url' => $validated['imagen_url'] ?? null,
                 'preparado_en_cocina' => $preparadoEnCocina,
-                'tiempo_preparacion_minutos' => $validated['tiempo_preparacion_minutos'] ?? null,
+                'tiempo_preparacion_minutos' => $validated['tiempo_preparacion_minutos'] ?? 0,
             ]);
 
             // Eliminar insumos existentes y agregar nuevos
