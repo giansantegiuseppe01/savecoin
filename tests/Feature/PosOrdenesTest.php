@@ -317,4 +317,67 @@ class PosOrdenesTest extends TestCase
         $this->assertSame(1, Cliente::count(), 'No debe crearse un cliente nuevo');
         $this->assertEquals($cliente->id, Orden::where('numero_recibo', 'LOC-1')->value('cliente_id'));
     }
+
+    public function test_una_referencia_de_transferencia_no_puede_usarse_en_dos_ventas(): void
+    {
+        $empleado = User::factory()->create();
+        $this->turnoAbierto($empleado);
+        [$producto] = $this->productoConInsumo(10, 1);
+
+        $abrir = function (string $recibo): string {
+            $id = (string) Str::uuid();
+            Orden::forceCreate([
+                'id' => $id,
+                'numero_recibo' => $recibo,
+                'user_id' => User::first()->id,
+                'cliente_nombre' => 'General',
+                'tipo' => 'venta',
+                'estado' => 'abierta',
+                'subtotal' => 0,
+                'total' => 0,
+                'tasa_cambio' => 1,
+                'fecha_hora' => now(),
+                'is_local' => false,
+            ]);
+
+            return $id;
+        };
+
+        $payload = fn (string $referencia) => [
+            'estado' => 'cerrada',
+            'metodo_pago' => 'transferencia',
+            'referencia_pago' => $referencia,
+            'subtotal' => 5,
+            'total' => 5,
+            'detalles' => [[
+                'producto_id' => $producto->id,
+                'producto_nombre' => $producto->nombre,
+                'precio_unitario' => 5,
+                'cantidad' => 1,
+            ]],
+        ];
+
+        $primera = $abrir('ORD-DUP-1');
+        $segunda = $abrir('ORD-DUP-2');
+
+        $this->actingAs($empleado, 'sanctum')
+            ->putJson("/api/pos/ordenes/{$primera}", $payload('00123456'))->assertOk();
+
+        // Misma referencia (aunque cambien los ceros, espacios o mayúsculas): rechazada
+        $this->actingAs($empleado, 'sanctum')
+            ->putJson("/api/pos/ordenes/{$segunda}", $payload(' 123456 '))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('referencia_pago');
+        $this->assertSame('abierta', Orden::find($segunda)->estado);
+
+        // Una referencia distinta sí se acepta
+        $this->actingAs($empleado, 'sanctum')
+            ->putJson("/api/pos/ordenes/{$segunda}", $payload('999999'))->assertOk();
+
+        // Si el recibo se anula, su referencia queda libre
+        Orden::whereKey($primera)->update(['estado' => 'anulada']);
+        $tercera = $abrir('ORD-DUP-3');
+        $this->actingAs($empleado, 'sanctum')
+            ->putJson("/api/pos/ordenes/{$tercera}", $payload('00123456'))->assertOk();
+    }
 }

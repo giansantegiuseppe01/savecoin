@@ -82,6 +82,41 @@ class Orden extends Model
     }
 
     /**
+     * Normaliza una referencia bancaria para compararla: sin espacios, en minúsculas y sin
+     * ceros a la izquierda ("00123456 " y "123456" son la misma referencia).
+     */
+    public static function normalizarReferencia(string $referencia): string
+    {
+        return ltrim(mb_strtolower(preg_replace('/\s+/', '', $referencia)), '0');
+    }
+
+    /**
+     * Recibo que ya usó esta referencia de pago (excluyendo $exceptoId y los recibos anulados),
+     * o null si está libre. Evita cobrar dos ventas con la misma transferencia.
+     */
+    public static function conReferenciaEnUso(string $referencia, ?string $exceptoId = null): ?self
+    {
+        $normalizada = self::normalizarReferencia($referencia);
+        if ($normalizada === '') {
+            return null;
+        }
+
+        $consulta = self::query()
+            ->whereNotNull('referencia_pago')
+            ->where('estado', '!=', 'anulada');
+
+        // Filtro previo en SQL (solo si no hay comodines que escapar); la comparación real es en PHP
+        if (! preg_match('/[%_\\\\]/', $normalizada)) {
+            $consulta->where('referencia_pago', 'like', '%'.$normalizada.'%');
+        }
+
+        return $consulta
+            ->when($exceptoId, fn ($q) => $q->where('id', '!=', $exceptoId))
+            ->get()
+            ->first(fn (self $o) => self::normalizarReferencia((string) $o->referencia_pago) === $normalizada);
+    }
+
+    /**
      * Verificar si la orden está cerrada
      */
     public function isCerrada(): bool

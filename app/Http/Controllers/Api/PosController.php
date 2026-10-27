@@ -55,6 +55,16 @@ class PosController extends Controller
                 'detalles.*.descuento' => 'nullable|numeric|min:0',
             ]);
 
+            // La misma referencia de transferencia no puede cobrar dos ventas
+            if (($validated['estado'] ?? 'abierta') === 'cerrada'
+                && ($validated['metodo_pago'] ?? null) === 'transferencia'
+                && ! empty($validated['referencia_pago'])
+                && ($uso = Orden::conReferenciaEnUso($validated['referencia_pago'], $validated['id'] ?? null))) {
+                throw ValidationException::withMessages([
+                    'referencia_pago' => 'La referencia '.$validated['referencia_pago'].' ya fue usada en el recibo #'.$uso->numero_recibo.'.',
+                ]);
+            }
+
             // Verificar turno activo (se requiere tanto para abrir como cerrar)
             $turnoActivo = Turno::where('user_id', Auth::id())
                 ->where('estado', 'abierto')
@@ -274,6 +284,16 @@ class PosController extends Controller
                     'nullable', 'string', 'max:100',
                     Rule::requiredIf(fn () => $request->input('estado') === 'cerrada'
                         && $request->input('metodo_pago') === 'transferencia'),
+                    // La misma referencia no puede cobrar dos ventas
+                    function (string $attribute, mixed $value, \Closure $fail) use ($request, $id) {
+                        if ($request->input('estado') !== 'cerrada' || $request->input('metodo_pago') !== 'transferencia') {
+                            return;
+                        }
+                        $uso = Orden::conReferenciaEnUso((string) $value, (string) $id);
+                        if ($uso) {
+                            $fail('La referencia '.$value.' ya fue usada en el recibo #'.$uso->numero_recibo.'.');
+                        }
+                    },
                 ],
                 'subtotal' => 'nullable|numeric|min:0',
                 'descuento' => 'nullable|numeric|min:0',
