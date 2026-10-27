@@ -165,7 +165,7 @@ class _InventarioTabState extends State<_InventarioTab> {
                             ])
                           : ListView.separated(
                               itemCount: visibles.length,
-                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              separatorBuilder: (_, _) => const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final i = visibles[index];
                                 final stock = _num(i['stock_actual']);
@@ -475,7 +475,7 @@ class _FotosTabState extends State<_FotosTab> {
                         ])
                       : ListView.separated(
                           itemCount: productos.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          separatorBuilder: (_, _) => const Divider(height: 1),
                           itemBuilder: (context, index) {
                             final p = productos[index];
                             final ocupado = _ocupados.contains(p.id);
@@ -520,8 +520,8 @@ class _Miniatura extends StatelessWidget {
         width: tam,
         height: tam,
         fit: BoxFit.cover,
-        placeholder: (_, __) => vacia,
-        errorWidget: (_, __, ___) => vacia,
+        placeholder: (_, _) => vacia,
+        errorWidget: (_, _, _) => vacia,
       ),
     );
   }
