@@ -413,7 +413,7 @@ class ApiService {
       'monto': monto,
       'descripcion': descripcion,
       if (referencia != null && referencia.isNotEmpty) 'referencia': referencia,
-      if (categoriaId != null) 'categoria_id': categoriaId,
+      'categoria_id': ?categoriaId,
     });
 
     if (response.statusCode == 201 || response.statusCode == 200) {
