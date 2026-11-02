@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AdminInventarioController;
+use App\Http\Controllers\Api\AdminLibroContableController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ClienteController; // ✅ Importado correctamente
@@ -59,6 +60,8 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     // Administración desde la app móvil: inventario (carga/descarga) y foto de productos
     Route::get('/admin/insumos', [AdminInventarioController::class, 'index']);
     Route::post('/admin/inventario/movimientos', [AdminInventarioController::class, 'movimiento']);
+    Route::get('/admin/libro-contable', [AdminLibroContableController::class, 'index']);
+    Route::post('/admin/libro-contable', [AdminLibroContableController::class, 'store']);
     Route::post('/admin/productos/{id}/imagen', [ProductoImagenController::class, 'store'])->whereNumber('id');
     Route::delete('/admin/productos/{id}/imagen', [ProductoImagenController::class, 'destroy'])->whereNumber('id');
 

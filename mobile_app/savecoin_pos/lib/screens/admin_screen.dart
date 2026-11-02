@@ -7,16 +7,17 @@ import '../providers/product_provider.dart';
 import '../services/api_service.dart';
 import '../services/sync_service.dart';
 import '../utils/log.dart';
+import 'admin_libro_tab.dart';
 
-/// Administración desde el teléfono (solo administradores): carga/descarga de inventario
-/// y foto de los productos. El servidor vuelve a comprobar el rol en cada petición.
+/// Administración desde el teléfono (solo administradores): carga/descarga de inventario,
+/// foto de los productos y libro contable. El servidor vuelve a comprobar el rol en cada petición.
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Administración'),
@@ -29,6 +30,7 @@ class AdminScreen extends StatelessWidget {
             tabs: [
               Tab(icon: Icon(Icons.inventory_2), text: 'Inventario'),
               Tab(icon: Icon(Icons.photo_camera), text: 'Fotos'),
+              Tab(icon: Icon(Icons.menu_book), text: 'Libro'),
             ],
           ),
         ),
@@ -36,6 +38,7 @@ class AdminScreen extends StatelessWidget {
           children: [
             _InventarioTab(),
             _FotosTab(),
+            LibroContableTab(),
           ],
         ),
       ),

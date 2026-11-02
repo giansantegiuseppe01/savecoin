@@ -386,4 +386,40 @@ class ApiService {
           statusCode: response.statusCode);
     }
   }
+
+  /// Libro contable (en bolívares): saldo, totales, últimos movimientos y categorías.
+  Future<Map<String, dynamic>> getLibroContable() async {
+    final response = await _send('GET', '/admin/libro-contable');
+
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(_decode(response) as Map);
+    }
+    throw ApiException(_errorMessage(response, 'Error al cargar el libro contable'),
+        statusCode: response.statusCode);
+  }
+
+  /// Registra una entrada o salida manual en el libro contable.
+  Future<Map<String, dynamic>> registrarMovimientoLibro({
+    required String fecha, // yyyy-MM-dd
+    required String tipo, // entrada | salida
+    required double monto,
+    required String descripcion,
+    String? referencia,
+    int? categoriaId,
+  }) async {
+    final response = await _send('POST', '/admin/libro-contable', body: {
+      'fecha': fecha,
+      'tipo_movimiento': tipo,
+      'monto': monto,
+      'descripcion': descripcion,
+      if (referencia != null && referencia.isNotEmpty) 'referencia': referencia,
+      if (categoriaId != null) 'categoria_id': categoriaId,
+    });
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return Map<String, dynamic>.from(_decode(response) as Map);
+    }
+    throw ApiException(_errorMessage(response, 'No se pudo registrar el movimiento'),
+        statusCode: response.statusCode);
+  }
 }
