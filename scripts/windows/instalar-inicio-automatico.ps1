@@ -45,7 +45,10 @@ Write-Host "PHP      : $php"
 Write-Host "Puerto   : $Puerto"
 
 # Se guarda la ruta completa de php.exe: la tarea corre como SYSTEM y no usa el PATH del usuario.
-$accion = New-ScheduledTaskAction -Execute $php -Argument "artisan serve --host=0.0.0.0 --port=$Puerto" -WorkingDirectory $raiz
+# Se ejecuta a traves de cmd para guardar lo que imprime el servidor (incluidos los errores)
+# en storage\logs\servidor.log: si no arranca, ahi se ve el motivo.
+$comando = "/c `"`"$php`" artisan serve --host=0.0.0.0 --port=$Puerto >> storage\logs\servidor.log 2>&1`""
+$accion = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument $comando -WorkingDirectory $raiz
 $disparador = New-ScheduledTaskTrigger -AtStartup
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $config = New-ScheduledTaskSettingsSet `
@@ -71,4 +74,5 @@ Write-Host 'Listo. El servidor ya esta corriendo y arrancara solo cada vez que e
 Write-Host "Prueba: abra http://localhost:$Puerto en el navegador."
 Write-Host ''
 Write-Host 'Recomendado para que no se apague solo: Configuracion > Sistema > Energia > Suspension = Nunca (con corriente).'
+Write-Host 'Si no arranca, el motivo queda en: storage\logs\servidor.log'
 Write-Host 'Para quitarlo: repita el comando con -Quitar'
