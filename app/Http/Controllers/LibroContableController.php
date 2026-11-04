@@ -171,11 +171,10 @@ class LibroContableController extends Controller
             DB::beginTransaction();
 
             $movimiento = LibroContable::findOrFail($id);
-            $fecha = $movimiento->fecha;
             $movimiento->delete();
 
-            // Recalcular saldos posteriores
-            $this->recalcularSaldosPosteriores($fecha);
+            // Recalcular todos los saldos en orden cronológico
+            $this->recalcularTodosSaldos();
 
             DB::commit();
 
