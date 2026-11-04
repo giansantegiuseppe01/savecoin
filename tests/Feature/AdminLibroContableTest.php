@@ -107,4 +107,23 @@ class AdminLibroContableTest extends TestCase
 
         $this->assertSame(0, LibroContable::count());
     }
+
+    public function test_eliminar_un_movimiento_desde_la_web_recalcula_los_saldos(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $this->movimiento($admin, ['tipo_movimiento' => 'entrada', 'monto' => 1000])->assertCreated();
+        $this->movimiento($admin, ['tipo_movimiento' => 'salida', 'monto' => 300])->assertCreated();
+        $ultimo = $this->movimiento($admin, ['tipo_movimiento' => 'entrada', 'monto' => 50])->assertCreated()->json('data.id');
+        $salida = LibroContable::where('tipo_movimiento', 'salida')->value('id');
+
+        // Se elimina la salida de 300: el saldo final pasa de 750 a 1050
+        $this->actingAs($admin)->deleteJson("/libro-contable/{$salida}")
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('saldo_actual', $this->igual(1050));
+
+        $this->assertSame(2, LibroContable::count());
+        $this->assertEquals(1050.0, (float) LibroContable::find($ultimo)->saldo_despues);
+    }
 }
