@@ -348,6 +348,32 @@ class ApiService {
         statusCode: response.statusCode);
   }
 
+  /// Crea un insumo nuevo (solo admin). El stock inicial queda registrado en la bitácora.
+  Future<Map<String, dynamic>> crearInsumo({
+    required String codigo,
+    required String nombre,
+    String? descripcion,
+    required String unidadMedida,
+    required double costoUnitario,
+    required double stockInicial,
+    required double stockMinimo,
+  }) async {
+    final response = await _send('POST', '/admin/insumos', body: {
+      'codigo': codigo,
+      'nombre': nombre,
+      if (descripcion != null && descripcion.isNotEmpty) 'descripcion': descripcion,
+      'unidad_medida': unidadMedida,
+      'costo_unitario': costoUnitario,
+      'stock_actual': stockInicial,
+      'stock_minimo': stockMinimo,
+    });
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      return Map<String, dynamic>.from(_decode(response)['data'] as Map);
+    }
+    throw ApiException(_errorMessage(response, 'No se pudo crear el insumo'), statusCode: response.statusCode);
+  }
+
   /// Sube la foto de un producto (multipart). Devuelve la URL completa de la imagen.
   Future<String?> subirImagenProducto(String productoId, Uint8List bytes, String nombreArchivo) async {
     await ensureLoaded();

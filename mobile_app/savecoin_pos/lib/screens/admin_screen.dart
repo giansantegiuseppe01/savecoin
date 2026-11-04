@@ -115,6 +115,23 @@ class _InventarioTabState extends State<_InventarioTab> {
     ));
   }
 
+  Future<void> _nuevoInsumo() async {
+    final creado = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => const _NuevoInsumoDialog(),
+    );
+    if (creado == null || !mounted) return;
+
+    setState(() {
+      _insumos.add(creado);
+      _insumos.sort((a, b) => '${a['nombre']}'.toLowerCase().compareTo('${b['nombre']}'.toLowerCase()));
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Insumo "${creado['nombre']}" creado'),
+      backgroundColor: Colors.green,
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final q = _busqueda.toLowerCase();
@@ -124,7 +141,13 @@ class _InventarioTabState extends State<_InventarioTab> {
           '${i['codigo']}'.toLowerCase().contains(q);
     }).toList();
 
-    return Column(
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _nuevoInsumo,
+        icon: const Icon(Icons.add),
+        label: const Text('Nuevo insumo'),
+      ),
+      body: Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
@@ -200,6 +223,128 @@ class _InventarioTabState extends State<_InventarioTab> {
                               },
                             ),
                     ),
+        ),
+      ],
+      ),
+    );
+  }
+}
+
+class _NuevoInsumoDialog extends StatefulWidget {
+  const _NuevoInsumoDialog();
+
+  @override
+  State<_NuevoInsumoDialog> createState() => _NuevoInsumoDialogState();
+}
+
+class _NuevoInsumoDialogState extends State<_NuevoInsumoDialog> {
+  final _codigo = TextEditingController();
+  final _nombre = TextEditingController();
+  final _descripcion = TextEditingController();
+  final _costo = TextEditingController();
+  final _stock = TextEditingController();
+  final _minimo = TextEditingController();
+  String _unidad = 'Unidad';
+  bool _enviando = false;
+  String? _error;
+
+  static const _unidades = {
+    'G': 'G (Gramos)',
+    'Kg': 'Kg (Kilogramos)',
+    'Lt': 'Lt (Litros)',
+    'Unidad': 'Unidad',
+  };
+
+  @override
+  void dispose() {
+    _codigo.dispose();
+    _nombre.dispose();
+    _descripcion.dispose();
+    _costo.dispose();
+    _stock.dispose();
+    _minimo.dispose();
+    super.dispose();
+  }
+
+  double? _parse(TextEditingController c) => double.tryParse(c.text.trim().replaceAll(',', '.'));
+
+  bool get _valido =>
+      _codigo.text.trim().isNotEmpty && _nombre.text.trim().isNotEmpty && (_parse(_costo) ?? -1) >= 0;
+
+  Future<void> _enviar() async {
+    setState(() {
+      _enviando = true;
+      _error = null;
+    });
+    try {
+      final creado = await ApiService().crearInsumo(
+        codigo: _codigo.text.trim(),
+        nombre: _nombre.text.trim(),
+        descripcion: _descripcion.text.trim(),
+        unidadMedida: _unidad,
+        costoUnitario: _parse(_costo)!,
+        stockInicial: _parse(_stock) ?? 0,
+        stockMinimo: _parse(_minimo) ?? 0,
+      );
+      if (mounted) Navigator.pop(context, creado);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _enviando = false;
+        _error = e is ApiException ? e.message : 'No se pudo crear el insumo';
+      });
+    }
+  }
+
+  Widget _campo(TextEditingController c, String label, {bool numerico = false, String? sufijo, bool autofocus = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: c,
+        autofocus: autofocus,
+        keyboardType: numerico ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+        decoration: InputDecoration(labelText: label, suffixText: sufijo, border: const OutlineInputBorder()),
+        onChanged: (_) => setState(() {}),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nuevo insumo'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _campo(_nombre, 'Nombre', autofocus: true),
+            _campo(_codigo, 'Código (único)'),
+            _campo(_descripcion, 'Descripción (opcional)'),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: DropdownButtonFormField<String>(
+                initialValue: _unidad,
+                decoration: const InputDecoration(labelText: 'Unidad de medida', border: OutlineInputBorder()),
+                items: [
+                  for (final e in _unidades.entries) DropdownMenuItem(value: e.key, child: Text(e.value)),
+                ],
+                onChanged: (v) => setState(() => _unidad = v ?? _unidad),
+              ),
+            ),
+            _campo(_costo, 'Costo unitario (USD)', numerico: true),
+            _campo(_stock, 'Stock inicial', numerico: true, sufijo: _unidad),
+            _campo(_minimo, 'Stock mínimo', numerico: true, sufijo: _unidad),
+            if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: _enviando ? null : () => Navigator.pop(context), child: const Text('Cancelar')),
+        ElevatedButton(
+          onPressed: _valido && !_enviando ? _enviar : null,
+          child: _enviando
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Crear'),
         ),
       ],
     );

@@ -24,6 +24,46 @@ class AdminInventarioController extends Controller
         );
     }
 
+    public function store(Request $request, InventarioService $inventario): JsonResponse
+    {
+        $validated = $request->validate([
+            'codigo' => 'required|string|max:50|unique:insumos,codigo',
+            'nombre' => 'required|string|max:255',
+            'descripcion' => 'nullable|string|max:500',
+            'unidad_medida' => 'required|in:G,Kg,Lt,Unidad',
+            'costo_unitario' => 'required|numeric|min:0',
+            'stock_actual' => 'nullable|numeric|min:0',
+            'stock_minimo' => 'nullable|numeric|min:0',
+        ]);
+
+        $stockInicial = (float) ($validated['stock_actual'] ?? 0);
+
+        $insumo = DB::transaction(function () use ($validated, $stockInicial, $inventario) {
+            $insumo = Insumo::create([
+                'codigo' => $validated['codigo'],
+                'nombre' => $validated['nombre'],
+                'descripcion' => $validated['descripcion'] ?? null,
+                'unidad_medida' => $validated['unidad_medida'],
+                'costo_unitario' => $validated['costo_unitario'],
+                'stock_actual' => 0,
+                'stock_minimo' => $validated['stock_minimo'] ?? 0,
+                'activo' => true,
+            ]);
+
+            // El stock inicial entra como un movimiento, para que quede en la bitácora
+            if ($stockInicial > 0) {
+                $insumo = $inventario->registrarMovimiento($insumo, 'entrada', $stockInicial, 'Stock inicial', Auth::id());
+            }
+
+            return $insumo;
+        });
+
+        return response()->json([
+            'message' => 'Insumo creado correctamente.',
+            'data' => $insumo->only(['id', 'nombre', 'codigo', 'stock_actual', 'stock_minimo', 'unidad_medida']),
+        ], 201);
+    }
+
     public function movimiento(Request $request, InventarioService $inventario): JsonResponse
     {
         $validated = $request->validate([

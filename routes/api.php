@@ -59,6 +59,7 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 
     // Administración desde la app móvil: inventario (carga/descarga) y foto de productos
     Route::get('/admin/insumos', [AdminInventarioController::class, 'index']);
+    Route::post('/admin/insumos', [AdminInventarioController::class, 'store']);
     Route::post('/admin/inventario/movimientos', [AdminInventarioController::class, 'movimiento']);
     Route::get('/admin/libro-contable', [AdminLibroContableController::class, 'index']);
     Route::post('/admin/libro-contable', [AdminLibroContableController::class, 'store']);

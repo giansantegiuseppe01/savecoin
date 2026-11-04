@@ -191,4 +191,36 @@ class AdminMovilTest extends TestCase
         $this->assertNull($producto->fresh()->getRawOriginal('imagen_url'));
         $this->assertFileDoesNotExist(public_path($ruta));
     }
+
+    public function test_el_admin_crea_insumos_nuevos_desde_la_app(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $datos = [
+            'codigo' => 'QUE-01', 'nombre' => 'Queso', 'unidad_medida' => 'Kg',
+            'costo_unitario' => 8.5, 'stock_actual' => 3, 'stock_minimo' => 1,
+        ];
+
+        $this->actingAs(User::factory()->create(), 'sanctum')->postJson('/api/admin/insumos', $datos)->assertForbidden();
+        $this->assertSame(0, Insumo::count());
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/insumos', $datos)
+            ->assertCreated()->assertJsonPath('data.nombre', 'Queso');
+
+        $insumo = Insumo::where('codigo', 'QUE-01')->firstOrFail();
+        $this->assertEquals(3.0, (float) $insumo->stock_actual);
+        $this->assertTrue((bool) $insumo->activo);
+        $this->assertSame(1, BitacoraInventario::where('insumo_id', $insumo->id)->where('motivo', 'Stock inicial')->count());
+
+        // Código repetido: rechazado
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/insumos', $datos)->assertStatus(422);
+        $this->assertSame(1, Insumo::count());
+
+        // Sin stock inicial: se crea en 0 y sin bitácora
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/insumos', [
+            'codigo' => 'SAL-01', 'nombre' => 'Sal', 'unidad_medida' => 'G', 'costo_unitario' => 0.01,
+        ])->assertCreated();
+        $sal = Insumo::where('codigo', 'SAL-01')->firstOrFail();
+        $this->assertEquals(0.0, (float) $sal->stock_actual);
+        $this->assertSame(0, BitacoraInventario::where('insumo_id', $sal->id)->count());
+    }
 }
