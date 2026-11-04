@@ -144,6 +144,52 @@ class Turno extends Model
     }
 
     /**
+     * Busca el turno al que pertenece una venta hecha sin conexión: el del mismo usuario que estaba
+     * abierto en el momento de la venta; si no hay, el turno abierto actual del usuario.
+     */
+    public static function paraVentaSincronizada(int $userId, \DateTimeInterface|string $fechaHora): ?self
+    {
+        return static::where('user_id', $userId)
+            ->where('hora_apertura', '<=', $fechaHora)
+            ->where(fn ($q) => $q->whereNull('hora_cierre')->orWhere('hora_cierre', '>=', $fechaHora))
+            ->orderByDesc('hora_apertura')
+            ->first()
+            ?? static::where('user_id', $userId)->where('estado', 'abierto')->first();
+    }
+
+    /**
+     * Asocia al turno una venta sincronizada tarde. Si el turno ya estaba cerrado, actualiza sus
+     * totales y asienta la diferencia en el libro contable (el cierre original no la incluía).
+     */
+    public function incorporarVentaTardia(Orden $orden, ?int $userId): void
+    {
+        Orden::whereKey($orden->getKey())->update(['turno_id' => $this->id]);
+
+        if (! $this->isCerrado() || $orden->estado !== 'cerrada' || $orden->tipo !== 'venta') {
+            return;
+        }
+
+        $this->total_ventas = $this->ordens()->where('estado', 'cerrada')->sum('total');
+        $this->numero_ordenes = $this->ordens()->where('estado', 'cerrada')->count();
+        $this->save();
+
+        $tasa = (float) $orden->tasa_cambio > 0 ? (float) $orden->tasa_cambio : (float) Configuracion::getTasaCambio();
+        $montoBs = round((float) $orden->total * $tasa, 2);
+        if ($montoBs <= 0) {
+            return;
+        }
+
+        app(\App\Services\LibroContableService::class)->registrar([
+            'fecha' => now()->toDateString(),
+            'tipo_movimiento' => 'entrada',
+            'monto' => $montoBs,
+            'descripcion' => $this->getDescripcionContable().' · venta sincronizada tarde, recibo '.$orden->numero_recibo.' (USD '.number_format((float) $orden->total, 2).')',
+            'referencia' => 'turno_'.$this->id.'_tardia_'.$orden->numero_recibo,
+            'categoria_id' => CategoriaLibroContable::where('nombre', 'Ventas')->value('id'),
+        ], $userId);
+    }
+
+    /**
      * Generar descripción para libro contable
      */
     public function getDescripcionContable(): string

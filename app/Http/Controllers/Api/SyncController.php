@@ -7,6 +7,7 @@ use App\Models\Cliente;
 use App\Models\DetalleOrden;
 use App\Models\Orden;
 use App\Models\Producto;
+use App\Models\Turno;
 use App\Services\InventarioService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -142,6 +143,13 @@ class SyncController extends Controller
                             'costo_insumos' => $costo,
                             'beneficio_bruto' => (float) $ordenData['total'] - $costo,
                         ]);
+                    }
+
+                    // Asigna la venta a su turno (antes quedaba sin turno y no entraba en el
+                    // cierre ni en el libro contable)
+                    if ($ordenData['estado'] === 'cerrada') {
+                        $turno = Turno::paraVentaSincronizada((int) auth()->id(), $ordenData['fecha_hora']);
+                        $turno?->incorporarVentaTardia(Orden::whereKey($ordenId)->first(), auth()->id());
                     }
                 }
             }

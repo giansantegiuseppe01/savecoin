@@ -114,4 +114,61 @@ class CierreTurnoLibroTest extends TestCase
         $this->assertSame(2, $porMetodo['efectivo']['ordenes']);
         $this->assertEquals(3500.0, $porMetodo['transferencia']['total_bs']);
     }
+
+    private function ventaOffline(string $recibo, float $total, float $tasa, \DateTimeInterface $cuando): array
+    {
+        return ['ordenes' => [[
+            'id' => (string) Str::uuid(),
+            'numero_recibo' => $recibo,
+            'cliente_nombre' => 'General',
+            'tipo' => 'venta',
+            'subtotal' => $total,
+            'descuento' => 0,
+            'impuesto' => 0,
+            'total' => $total,
+            'tasa_cambio' => $tasa,
+            'aplica_iva' => false,
+            'estado' => 'cerrada',
+            'metodo_pago' => 'efectivo',
+            'fecha_hora' => $cuando->format('c'),
+            'detalles' => [[
+                'producto_nombre' => 'Perro', 'precio_unitario' => $total, 'cantidad' => 1, 'subtotal' => $total,
+            ]],
+        ]]];
+    }
+
+    public function test_una_venta_offline_sincronizada_antes_del_cierre_entra_en_el_turno_y_el_libro(): void
+    {
+        $empleado = User::factory()->create();
+        $turno = $this->turnoConVentas($empleado, []);
+
+        $this->actingAs($empleado, 'sanctum')
+            ->postJson('/api/sync/ordenes', $this->ventaOffline('LOC-1', 18, 500, now()))->assertOk();
+        $this->assertSame($turno->id, Orden::where('numero_recibo', 'LOC-1')->value('turno_id'));
+
+        $this->actingAs($empleado, 'sanctum')->postJson('/api/turnos/cerrar')
+            ->assertOk()->assertJsonPath('resumen.total_usd', 18);
+
+        $this->assertEqualsWithDelta(9000.0, (float) LibroContable::firstOrFail()->monto, 0.01);
+    }
+
+    public function test_una_venta_offline_sincronizada_despues_del_cierre_corrige_turno_y_libro(): void
+    {
+        $empleado = User::factory()->create();
+        $turno = $this->turnoConVentas($empleado, [[10, 500]]);
+        $venta = $this->ventaOffline('LOC-2', 18, 500, now());
+
+        $this->actingAs($empleado, 'sanctum')->postJson('/api/turnos/cerrar')->assertOk();
+        $this->actingAs($empleado, 'sanctum')->postJson('/api/sync/ordenes', $venta)->assertOk();
+
+        $turno->refresh();
+        $this->assertEquals(28.0, (float) $turno->total_ventas);
+        $this->assertSame(2, (int) $turno->numero_ordenes);
+        $this->assertSame(2, LibroContable::count());
+        $this->assertEqualsWithDelta(14000.0, (float) LibroContable::sum('monto'), 0.01);
+
+        // Reenviar la misma venta no duplica nada
+        $this->actingAs($empleado, 'sanctum')->postJson('/api/sync/ordenes', $venta)->assertOk();
+        $this->assertSame(2, LibroContable::count());
+    }
 }

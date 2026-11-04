@@ -80,6 +80,10 @@ class OrderProvider with ChangeNotifier {
   SyncService get syncService => _syncService;
 
   Box<Orden> get _ordenesBox => Hive.box<Orden>('ordenes');
+
+  /// Ventas cerradas/anuladas que todavía no llegaron al servidor.
+  int get pendientesDeSincronizar =>
+      _ordenesBox.values.where((o) => o.isLocal && o.estado != 'abierta').length;
   Box<DetalleOrden> get _detallesBox => Hive.box<DetalleOrden>('detalles_orden');
 
   // ---------------------------------------------------------------------------

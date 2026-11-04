@@ -199,6 +199,17 @@ class _POSScreenState extends State<POSScreen> {
     );
     if (confirmed != true || !mounted) return;
 
+    // Las ventas hechas sin conexión deben llegar al servidor antes de cerrar el turno
+    final ordenProvider = context.read<OrderProvider>();
+    await ordenProvider.syncService.syncOrdenesOffline();
+    if (!mounted) return;
+    if (ordenProvider.pendientesDeSincronizar > 0) {
+      _aviso(
+          'Hay ${ordenProvider.pendientesDeSincronizar} venta(s) sin sincronizar. Conéctate al servidor y vuelve a intentarlo.',
+          error: true);
+      return;
+    }
+
     final success = await shiftProvider.closeShift();
     if (!mounted) return;
     if (success) {
