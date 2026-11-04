@@ -62,6 +62,14 @@ class SyncService {
       final clientes = await _apiService.getClientes();
       final clientesBox = Hive.box<Cliente>('clientes');
 
+      // Los clientes que ya no existen en el servidor se quitan de la tablet
+      // (los creados sin conexión y aún no enviados se conservan)
+      final idsServidor = {for (final c in clientes) c.id};
+      final obsoletos = clientesBox.values
+          .where((c) => !c.isLocal && !idsServidor.contains(c.id))
+          .map((c) => c.id)
+          .toList();
+      await clientesBox.deleteAll(obsoletos);
       await clientesBox.putAll({for (final c in clientes) c.id: c});
 
       logd('Sincronizados ${clientes.length} clientes desde el servidor');

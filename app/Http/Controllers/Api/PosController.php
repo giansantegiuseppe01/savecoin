@@ -8,6 +8,7 @@ use App\Models\Configuracion;
 use App\Models\DetalleOrden;
 use App\Models\Orden;
 use App\Models\Producto;
+use App\Models\Cliente;
 use App\Models\Turno;
 use App\Services\InventarioService;
 use Illuminate\Http\JsonResponse;
@@ -244,7 +245,11 @@ class PosController extends Controller
                 Log::info('Orden no existe, creando nueva');
                 $orden = new Orden;
                 $orden->numero_recibo = 'TEMP-'.time(); // Temporal hasta tener el ID
-                $orden->cliente_id = $request->input('cliente_id');
+                // Si el cliente ya no existe en el servidor (la tablet puede tener uno viejo guardado),
+                // la venta se registra igual con el nombre; antes fallaba por la llave foránea
+                $orden->cliente_id = Cliente::whereKey($request->input('cliente_id'))->exists()
+                    ? $request->input('cliente_id')
+                    : null;
                 $orden->cliente_nombre = $request->input('cliente_nombre');
                 $orden->tipo = $request->input('tipo', 'venta');
                 $orden->tasa_cambio = $request->input('tasa_cambio', 1);
