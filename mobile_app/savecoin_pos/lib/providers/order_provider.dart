@@ -221,7 +221,11 @@ class OrderProvider with ChangeNotifier {
 
       final actuales = detallesDe(orden);
       final advertencias = <String>[];
+      _motivoSinSincronizar = null;
       orden = await _sincronizar(orden, advertencias);
+      if (orden.isLocal && _motivoSinSincronizar != null) {
+        advertencias.add('Comanda guardada solo en la tablet (sin sincronizar): $_motivoSinSincronizar');
+      }
 
       final cambios =
           _changeService.detectarCambios(anteriores, actuales, orden.numeroRecibo);
@@ -307,6 +311,7 @@ class OrderProvider with ChangeNotifier {
       );
 
       final advertencias = <String>[];
+      _motivoSinSincronizar = null;
       orden = await _sincronizar(orden, advertencias);
 
       _currentOrden = null;
@@ -316,7 +321,8 @@ class OrderProvider with ChangeNotifier {
 
       final cerrada = detallesDe(orden);
       final pendiente = orden.isLocal
-          ? 'Venta guardada sin conexión: se enviará al servidor al sincronizar.'
+          ? 'Venta guardada en la tablet: se enviará al servidor al sincronizar.'
+              '${_motivoSinSincronizar != null ? ' Motivo: $_motivoSinSincronizar' : ''}'
           : null;
 
       final impresion = await _imprimir(() =>
@@ -457,6 +463,16 @@ class OrderProvider with ChangeNotifier {
   // Internos
   // ---------------------------------------------------------------------------
 
+  /// Por qué la última orden quedó solo en este dispositivo (null si se sincronizó o no hay red).
+  String? _motivoSinSincronizar;
+
+  String _describir(Object e) {
+    if (e is ApiException) {
+      return e.statusCode != null ? 'el servidor respondió ${e.statusCode}: ${e.message}' : e.message;
+    }
+    return 'no se pudo contactar al servidor ($e)';
+  }
+
   /// Devuelve la orden en edición o crea una nueva (en el servidor si hay
   /// conexión; si no, solo en este dispositivo).
   Future<Orden> _asegurarOrden(Cliente cliente, double tasaCambio) async {
@@ -495,6 +511,12 @@ class OrderProvider with ChangeNotifier {
           tasaCambio: tasaCambio,
         );
       } catch (e) {
+        // Un rechazo del servidor (p. ej. "no tienes un turno abierto") no es un problema de
+        // conexión: se informa en vez de guardar la orden en silencio solo en este equipo.
+        if (e is ApiException && e.statusCode != null && e.statusCode! >= 400 && e.statusCode! < 500) {
+          rethrow;
+        }
+        _motivoSinSincronizar = _describir(e);
         logd('No se pudo crear la orden en el servidor, se crea local: $e');
       }
     }
@@ -605,6 +627,7 @@ class OrderProvider with ChangeNotifier {
           rethrow;
         }
         logd('No se pudo enviar la orden al servidor, queda pendiente: $e');
+        _motivoSinSincronizar = _describir(e);
         resultado = orden.copyWith(isLocal: true);
       }
     } else {
