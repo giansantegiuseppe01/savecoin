@@ -362,17 +362,21 @@ function toggleInsumosSection(agregarFila = true) {
     }
 }
 
+let insumosFilaId = 0;
+
 function agregarFilaInsumo(insumoData = null) {
     const container = document.getElementById('insumosContainer');
-    const rowId = Date.now();
+    // Contador (no Date.now()): al editar, las filas se crean en el mismo milisegundo y
+    // compartían nombre de campo, así que solo la última llegaba al servidor
+    const rowId = ++insumosFilaId;
     
     const insumosOptions = insumosDisponibles.map(insumo => 
-        `<option value="${escapeHtml(insumo.id)}" data-unidad="${escapeHtml(insumo.unidad_medida)}" ${insumoData && insumoData.insumo_id === insumo.id ? 'selected' : ''}>
+        `<option value="${escapeHtml(insumo.id)}" data-unidad="${escapeHtml(insumo.unidad_medida)}" ${insumoData && String(insumoData.insumo_id) === String(insumo.id) ? 'selected' : ''}>
             ${escapeHtml(insumo.nombre)} (${escapeHtml(insumo.codigo)}) - $${escapeHtml(insumo.costo_unitario)}/${escapeHtml(insumo.unidad_medida)}
         </option>`
     ).join('');
     
-    const selectedInsumo = insumoData ? insumosDisponibles.find(i => i.id === insumoData.insumo_id) : null;
+    const selectedInsumo = insumoData ? insumosDisponibles.find(i => String(i.id) === String(insumoData.insumo_id)) : null;
     const unidadMedida = selectedInsumo ? selectedInsumo.unidad_medida : (insumoData ? insumoData.unidad_medida : 'g');
     
     const row = document.createElement('div');
