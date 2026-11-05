@@ -149,9 +149,13 @@ class Turno extends Model
      */
     public static function paraVentaSincronizada(int $userId, \DateTimeInterface|string $fechaHora): ?self
     {
+        // Se normaliza a la zona horaria de la app: comparar el texto ISO (con 'T' y desfase)
+        // contra las fechas de la base de datos daba resultados erróneos.
+        $momento = \Illuminate\Support\Carbon::parse($fechaHora)->setTimezone(config('app.timezone'))->format('Y-m-d H:i:s');
+
         return static::where('user_id', $userId)
-            ->where('hora_apertura', '<=', $fechaHora)
-            ->where(fn ($q) => $q->whereNull('hora_cierre')->orWhere('hora_cierre', '>=', $fechaHora))
+            ->where('hora_apertura', '<=', $momento)
+            ->where(fn ($q) => $q->whereNull('hora_cierre')->orWhere('hora_cierre', '>=', $momento))
             ->orderByDesc('hora_apertura')
             ->first()
             ?? static::where('user_id', $userId)->where('estado', 'abierto')->first();
