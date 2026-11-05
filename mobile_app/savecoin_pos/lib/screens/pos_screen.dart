@@ -316,10 +316,18 @@ class _POSScreenState extends State<POSScreen> {
       ),
       body: Consumer3<ProductProvider, CartProvider, OrderProvider>(
         builder: (context, productProvider, cartProvider, orderProvider, _) {
+          // Los anchos se adaptan a la pantalla: en una tableta vertical o un teléfono, las
+          // columnas fijas (200 + 350 px) dejaban una franja mínima para los productos.
+          final ancho = MediaQuery.sizeOf(context).width;
+          final anchoCategorias = (ancho * 0.15).clamp(104.0, 200.0);
+          final anchoCarrito = (ancho * 0.33).clamp(250.0, 350.0);
+          final compacto = ancho < 900;
+
           return Row(
             children: [
               // Sidebar de Categorías (Izquierda)
               CategorySidebar(
+                width: anchoCategorias,
                 categories: productProvider.categorias,
                 selectedCategory: productProvider.selectedCategoria,
                 onCategorySelected: productProvider.filterByCategoria,
@@ -333,9 +341,10 @@ class _POSScreenState extends State<POSScreen> {
                   child: Column(
                     children: [
                       Padding(
-                        padding: const EdgeInsets.all(16.0),
+                        padding: EdgeInsets.all(compacto ? 8.0 : 16.0),
                         child: TextField(
                           decoration: InputDecoration(
+                            isDense: compacto,
                             hintText: 'Buscar productos...',
                             prefixIcon: const Icon(Icons.search),
                             border: OutlineInputBorder(
@@ -362,14 +371,14 @@ class _POSScreenState extends State<POSScreen> {
                                     ),
                                   )
                                 : GridView.builder(
-                                    padding: const EdgeInsets.all(16),
+                                    padding: EdgeInsets.all(compacto ? 8 : 16),
                                     gridDelegate:
-                                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                                      maxCrossAxisExtent: 200,
-                                      crossAxisSpacing: 16,
-                                      mainAxisSpacing: 16,
+                                        SliverGridDelegateWithMaxCrossAxisExtent(
+                                      maxCrossAxisExtent: compacto ? 150 : 200,
+                                      crossAxisSpacing: compacto ? 8 : 16,
+                                      mainAxisSpacing: compacto ? 8 : 16,
                                       // Alto fijo: con proporción fija el texto se salía de la tarjeta
-                                      mainAxisExtent: 235,
+                                      mainAxisExtent: compacto ? 195 : 235,
                                     ),
                                     itemCount: productProvider.productos.length,
                                     itemBuilder: (context, index) {
@@ -389,6 +398,7 @@ class _POSScreenState extends State<POSScreen> {
               // Panel del Carrito (Derecha). Los cambios del carrito no se
               // guardan ni se imprimen hasta "Enviar a Cocina" o "Cobrar".
               CartPanel(
+                width: anchoCarrito,
                 cartItems: cartProvider.items,
                 subtotal: cartProvider.subtotal,
                 impuesto: cartProvider.impuesto,

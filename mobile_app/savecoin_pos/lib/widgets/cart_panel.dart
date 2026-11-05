@@ -18,6 +18,7 @@ class CartPanel extends StatelessWidget {
   /// true mientras se guarda/cobra: desactiva los botones para evitar
   /// envíos o cobros dobles.
   final bool busy;
+  final double width;
   final VoidCallback onClienteSelected;
   final VoidCallback onClearCart;
   final void Function(String) onRemoveItem;
@@ -45,6 +46,7 @@ class CartPanel extends StatelessWidget {
     required this.onPrintPreCuenta,
     required this.onAplicaIvaChanged,
     required this.onCobrar,
+    this.width = 350,
     this.ordenEnEdicion,
     this.busy = false,
   });
@@ -52,7 +54,7 @@ class CartPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 350,
+      width: width,
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(left: BorderSide(color: Colors.grey[300]!)),

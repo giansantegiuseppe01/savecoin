@@ -4,18 +4,20 @@ class CategorySidebar extends StatelessWidget {
   final List<String> categories;
   final String? selectedCategory;
   final Function(String?) onCategorySelected;
+  final double width;
 
   const CategorySidebar({
     super.key,
     required this.categories,
     required this.selectedCategory,
     required this.onCategorySelected,
+    this.width = 200,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 200,
+      width: width,
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(right: BorderSide(color: Colors.grey[300]!)),
