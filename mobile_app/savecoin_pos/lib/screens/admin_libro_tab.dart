@@ -303,6 +303,8 @@ class _NuevoMovimientoDialogState extends State<_NuevoMovimientoDialog> {
   Widget build(BuildContext context) {
     final esEntrada = _tipo == 'entrada';
     return AlertDialog(
+      scrollable: true,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       title: const Text('Nuevo movimiento'),
       content: SingleChildScrollView(
         child: Column(

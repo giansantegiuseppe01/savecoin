@@ -170,7 +170,7 @@
 
 <!-- Modal Agregar Movimiento -->
 <div class="modal fade" id="agregarMovimientoModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Agregar Movimiento</h5>
@@ -244,7 +244,7 @@
 
 <!-- Modal Gestión de Categorías -->
 <div class="modal fade" id="gestionCategoriasModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-warning text-dark">
                 <h5 class="modal-title"><i class="bi bi-tags me-2"></i>Gestión de Categorías</h5>

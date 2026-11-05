@@ -312,6 +312,8 @@ class _NuevoInsumoDialogState extends State<_NuevoInsumoDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       title: const Text('Nuevo insumo'),
       content: SingleChildScrollView(
         child: Column(
@@ -409,6 +411,8 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
   Widget build(BuildContext context) {
     final unidad = '${widget.insumo['unidad_medida'] ?? ''}';
     return AlertDialog(
+      scrollable: true,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       title: Text(_esEntrada ? 'Cargar inventario' : 'Descargar inventario'),
       content: SingleChildScrollView(
         child: Column(

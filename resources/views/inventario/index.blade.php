@@ -149,7 +149,7 @@
 
 <!-- Modal Crear Insumo -->
 <div class="modal fade" id="crearInsumoModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-success text-white">
                 <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Nuevo Insumo</h5>
@@ -217,7 +217,7 @@
 
 <!-- Modal Editar Insumo -->
 <div class="modal fade" id="editarInsumoModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-warning text-dark">
                 <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Editar Insumo</h5>
@@ -288,7 +288,7 @@
 
 <!-- Modal Movimiento de Stock -->
 <div class="modal fade" id="movimientoStockModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>Movimiento de Stock</h5>

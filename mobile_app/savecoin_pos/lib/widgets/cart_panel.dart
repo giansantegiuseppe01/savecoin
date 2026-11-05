@@ -315,6 +315,8 @@ class _PagoDialogState extends State<_PagoDialog> {
   Widget build(BuildContext context) {
     final porcentaje = (kIvaRate * 100).round();
     return AlertDialog(
+      scrollable: true,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       title: const Text('Seleccionar Método de Pago'),
       content: SingleChildScrollView(
         child: Column(
@@ -391,6 +393,8 @@ class _EfectivoModalState extends State<_EfectivoModal> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       title: const Text('Pago en Efectivo'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -454,6 +458,8 @@ class _TransferenciaModalState extends State<_TransferenciaModal> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       title: const Text('Transferencia Bancaria'),
       content: TextField(
         controller: _referenciaController,

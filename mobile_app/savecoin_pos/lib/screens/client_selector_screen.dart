@@ -141,6 +141,8 @@ class _ClientSelectorScreenState extends State<ClientSelectorScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        scrollable: true,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         title: const Text('Nuevo Cliente'),
         content: SingleChildScrollView(
           child: Column(

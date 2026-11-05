@@ -148,7 +148,7 @@
 
 <!-- Modal Agregar/Editar Producto -->
 <div class="modal fade" id="agregarProductoModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-success text-white">
                 <h5 class="modal-title" id="productoModalTitle"><i class="bi bi-plus-circle me-2"></i>Agregar Producto</h5>

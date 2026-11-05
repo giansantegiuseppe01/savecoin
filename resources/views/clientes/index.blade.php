@@ -137,7 +137,7 @@
 
 <!-- Modal Crear Cliente -->
 <div class="modal fade" id="crearClienteModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-success text-white">
                 <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Nuevo Cliente</h5>
@@ -180,7 +180,7 @@
 
 <!-- Modal Editar Cliente -->
 <div class="modal fade" id="editarClienteModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-warning text-dark">
                 <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Editar Cliente</h5>

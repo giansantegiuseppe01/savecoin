@@ -52,6 +52,8 @@ class _LoginScreenState extends State<LoginScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        scrollable: true,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         title: const Text('Configuración del Servidor'),
         content: Column(
           mainAxisSize: MainAxisSize.min,

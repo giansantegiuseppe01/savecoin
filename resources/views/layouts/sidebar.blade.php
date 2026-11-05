@@ -128,18 +128,65 @@
         .btn-action:hover {
             transform: scale(1.1);
         }
-        @media (max-width: 992px) {
-            .sidebar {
-                transform: translateX(100%);
-                transition: transform 0.3s ease;
-            }
-            .sidebar.show {
-                transform: translateX(0);
-            }
-            .main-content {
-                margin-right: 0;
-            }
+        /* Barra superior con botón de menú: solo en pantallas menores a 992px */
+        .topbar { display: none; }
+        .sidebar-overlay { display: none; }
+
+        /* Portátiles/tabletas horizontales: menú un poco más angosto */
+        @media (min-width: 992px) and (max-width: 1199.98px) {
+            .sidebar { width: 230px; }
+            .main-content { margin-left: 230px; padding: 16px; }
+            .kpi-card .kpi-value { font-size: 1.6rem; }
         }
+
+        /* Tabletas verticales y teléfonos: el menú pasa a ser un panel deslizable */
+        @media (max-width: 991.98px) {
+            .topbar {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                position: sticky;
+                top: 0;
+                z-index: 1020;
+                background: #2c3e50;
+                color: #fff;
+                padding: 10px 14px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            }
+            .topbar .btn { color: #fff; border-color: rgba(255,255,255,0.4); }
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+                width: 270px;
+                max-width: 85vw;
+                z-index: 1050;
+            }
+            .sidebar.show { transform: translateX(0); }
+            .sidebar-overlay.show {
+                display: block;
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.45);
+                z-index: 1040;
+            }
+            .main-content { margin-left: 0; padding: 12px; }
+            .kpi-card .kpi-value { font-size: 1.5rem; }
+            h1, .h1 { font-size: 1.6rem; }
+            h2, .h2 { font-size: 1.4rem; }
+            /* Cualquier tabla ancha se desplaza hacia los lados en vez de romper la página */
+            .main-content .card-body { overflow-x: auto; }
+            .modal-dialog { margin: 0.5rem; }
+        }
+
+        @media (max-width: 575.98px) {
+            .main-content { padding: 8px; }
+            .btn-group, .d-flex.gap-2 { flex-wrap: wrap; }
+        }
+
+        /* Los formularios en ventanas emergentes se desplazan si no caben (teclado en pantalla) */
+        .modal-dialog { max-height: calc(100vh - 1rem); }
+        .modal-content { max-height: calc(100vh - 1rem); }
+        .modal-body { overflow-y: auto; }
     </style>
     
     @stack('styles')
@@ -228,14 +275,36 @@
         </div>
     </nav>
 
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
     <!-- Contenido Principal -->
     <div class="main-content">
+        <div class="topbar mb-3 rounded">
+            <button type="button" class="btn btn-sm" id="btnMenu" aria-label="Abrir menú">
+                <i class="bi bi-list fs-5"></i>
+            </button>
+            <strong><i class="bi bi-cash-coin text-warning"></i> SaveCoin POS</strong>
+        </div>
         @yield('content')
     </div>
 
     <!-- Bootstrap 5 JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
+    <script>
+        (function () {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            const alternar = (abrir) => {
+                sidebar.classList.toggle('show', abrir);
+                overlay.classList.toggle('show', abrir);
+            };
+            document.getElementById('btnMenu').addEventListener('click', () => alternar(!sidebar.classList.contains('show')));
+            overlay.addEventListener('click', () => alternar(false));
+            sidebar.querySelectorAll('a').forEach(a => a.addEventListener('click', () => alternar(false)));
+        })();
+    </script>
+
     @stack('scripts')
 </body>
 </html>

@@ -446,6 +446,8 @@ class _NotasDialogState extends State<_NotasDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       title: const Text('Notas del Cliente'),
       content: TextField(
         controller: _controller,

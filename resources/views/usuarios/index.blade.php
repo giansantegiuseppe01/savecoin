@@ -71,7 +71,7 @@
 
 <!-- Modal Agregar Usuario -->
 <div class="modal fade" id="agregarUsuarioModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-success text-white">
                 <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Agregar Usuario</h5>
@@ -126,7 +126,7 @@
 
 <!-- Modal Editar Usuario -->
 <div class="modal fade" id="editarUsuarioModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-warning text-dark">
                 <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Editar Usuario</h5>
