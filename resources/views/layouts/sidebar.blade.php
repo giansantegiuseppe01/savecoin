@@ -187,6 +187,14 @@
         .modal-dialog { max-height: calc(100vh - 1rem); }
         .modal-content { max-height: calc(100vh - 1rem); }
         .modal-body { overflow-y: auto; }
+        /* Cuando el <form> envuelve cuerpo y pie del modal, el scroll interno no funcionaba */
+        .modal-content > form {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            max-height: calc(100vh - 1rem);
+            overflow: hidden;
+        }
     </style>
     
     @stack('styles')
