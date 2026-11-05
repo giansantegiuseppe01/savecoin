@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\LibroContable;
 use App\Models\Orden;
+use App\Models\Producto;
 use App\Models\Turno;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -132,6 +133,7 @@ class CierreTurnoLibroTest extends TestCase
             'metodo_pago' => 'efectivo',
             'fecha_hora' => $cuando->format('c'),
             'detalles' => [[
+                'producto_id' => Producto::forceCreate(['nombre' => 'Perro '.$recibo, 'codigo' => 'P-'.$recibo, 'precio_venta' => $total])->id,
                 'producto_nombre' => 'Perro', 'precio_unitario' => $total, 'cantidad' => 1, 'subtotal' => $total,
             ]],
         ]]];

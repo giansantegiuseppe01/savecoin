@@ -28,7 +28,7 @@ class LibroContableController extends Controller
             $query->where('tipo_movimiento', $request->input('tipo_movimiento'));
         }
 
-        $movimientos = $query->orderBy('fecha', 'desc')->orderBy('created_at', 'desc')->paginate(30);
+        $movimientos = $query->orderBy('fecha', 'desc')->orderBy('created_at', 'desc')->orderByDesc('id')->paginate(30);
 
         // Guardar filtros para PDF
         $filtros = [
@@ -75,7 +75,7 @@ class LibroContableController extends Controller
             $query->where('tipo_movimiento', $request->input('tipo_movimiento'));
         }
 
-        $movimientos = $query->orderBy('fecha', 'desc')->orderBy('created_at', 'desc')->get();
+        $movimientos = $query->orderBy('fecha', 'desc')->orderBy('created_at', 'desc')->orderByDesc('id')->get();
 
         if ($movimientos->isEmpty()) {
             return back()->with('error', 'No hay movimientos para generar el PDF con los filtros actuales.');
@@ -196,7 +196,7 @@ class LibroContableController extends Controller
 
     private function calcularSaldoActual(): float
     {
-        $ultimoMovimiento = LibroContable::orderBy('fecha', 'desc')->orderBy('created_at', 'desc')->first();
+        $ultimoMovimiento = LibroContable::orderBy('fecha', 'desc')->orderBy('created_at', 'desc')->orderByDesc('id')->first();
 
         return $ultimoMovimiento ? $ultimoMovimiento->saldo_despues : 0;
     }
@@ -220,7 +220,7 @@ class LibroContableController extends Controller
     private function recalcularTodosSaldos()
     {
         // Obtener todos los movimientos en orden cronológico
-        $todosMovimientos = LibroContable::orderBy('fecha')->orderBy('created_at')->get();
+        $todosMovimientos = LibroContable::orderBy('fecha')->orderBy('created_at')->orderBy('id')->get();
 
         $saldo = 0;
 

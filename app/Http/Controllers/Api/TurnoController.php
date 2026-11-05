@@ -253,7 +253,7 @@ class TurnoController extends Controller
 
     private function calcularSaldoNuevo(float $montoEntrada): float
     {
-        $ultimoMovimiento = LibroContable::orderBy('fecha', 'desc')->orderBy('created_at', 'desc')->first();
+        $ultimoMovimiento = LibroContable::orderBy('fecha', 'desc')->orderBy('created_at', 'desc')->orderByDesc('id')->first();
         $saldoActual = $ultimoMovimiento ? $ultimoMovimiento->saldo_despues : 0;
 
         return $saldoActual + $montoEntrada;
