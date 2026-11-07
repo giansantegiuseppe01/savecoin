@@ -107,8 +107,11 @@ class _InventarioTabState extends State<_InventarioTab> {
 
     setState(() {
       final i = _insumos.indexWhere((e) => '${e['id']}' == '${actualizado['id']}');
-      if (i >= 0) _insumos[i] = actualizado;
+      // Se mezcla para no perder la receta del insumo preparado
+      if (i >= 0) _insumos[i] = {..._insumos[i], ...actualizado};
     });
+    // Preparar un insumo descuenta sus ingredientes: se recarga la lista para ver su stock nuevo
+    if (tipo == 'entrada' && insumo['ingredientes'] is List) _cargar();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('${actualizado['nombre']}: stock ${_fmt(_num(actualizado['stock_actual']))} ${actualizado['unidad_medida'] ?? ''}'),
       backgroundColor: Colors.green,
@@ -407,6 +410,36 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
     }
   }
 
+  /// Si el insumo es preparado (p. ej. una salsa), muestra qué ingredientes se descontarán.
+  List<Widget> _vistaPreviaPreparacion() {
+    final ingredientes = widget.insumo['ingredientes'];
+    final rendimiento = _num(widget.insumo['rendimiento']);
+    if (!_esEntrada || ingredientes is! List || ingredientes.isEmpty || rendimiento <= 0) return [];
+
+    final factor = (_valor ?? 0) / rendimiento;
+    return [
+      const SizedBox(height: 12),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Insumo preparado: se descontarán sus ingredientes',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            const SizedBox(height: 4),
+            for (final g in ingredientes)
+              Text(
+                '• ${g['nombre']}: ${_fmt(_num(g['cantidad']) * factor)} ${g['unidad_medida'] ?? ''}',
+                style: const TextStyle(fontSize: 12),
+              ),
+          ],
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final unidad = '${widget.insumo['unidad_medida'] ?? ''}';
@@ -433,6 +466,7 @@ class _MovimientoDialogState extends State<_MovimientoDialog> {
               ),
               onChanged: (_) => setState(() {}),
             ),
+            ..._vistaPreviaPreparacion(),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BitacoraInventario;
 use App\Models\Insumo;
+use App\Services\InventarioService;
 use App\Services\ReciboPdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -30,7 +31,7 @@ class InventarioController extends Controller
             $query->where('activo', false);
         }
 
-        $insumos = $query->orderBy('nombre')->paginate(20);
+        $insumos = $query->with('ingredientes')->orderBy('nombre')->paginate(20);
 
         // Guardar filtros para PDF
         $filtros = [
@@ -43,7 +44,10 @@ class InventarioController extends Controller
         $stockBajo = Insumo::whereColumn('stock_actual', '<', 'stock_minimo')->count();
         $insumosActivos = Insumo::where('activo', true)->count();
 
+        $todosInsumos = Insumo::orderBy('nombre')->get(['id', 'nombre', 'unidad_medida']);
+
         return view('inventario.index', compact(
+            'todosInsumos',
             'insumos',
             'totalInsumos',
             'stockBajo',
@@ -97,6 +101,10 @@ class InventarioController extends Controller
                 'costo_unitario' => 'required|numeric|min:0',
                 'stock_actual' => 'required|numeric|min:0',
                 'stock_minimo' => 'required|numeric|min:0',
+                'rendimiento' => 'nullable|numeric|gt:0',
+                'ingredientes' => 'nullable|array',
+                'ingredientes.*.insumo_id' => 'required_with:ingredientes|exists:insumos,id',
+                'ingredientes.*.cantidad' => 'required_with:ingredientes|numeric|gt:0',
             ]);
 
             $activo = $request->has('activo') && $request->activo == '1';
@@ -111,6 +119,8 @@ class InventarioController extends Controller
                 'stock_minimo' => $validated['stock_minimo'],
                 'activo' => $activo,
             ]);
+
+            $this->guardarReceta($insumo, $validated);
 
             return response()->json([
                 'success' => true,
@@ -144,6 +154,10 @@ class InventarioController extends Controller
                 'unidad_medida' => 'required|in:G,Kg,Lt,Unidad',
                 'costo_unitario' => 'required|numeric|min:0',
                 'stock_minimo' => 'required|numeric|min:0',
+                'rendimiento' => 'nullable|numeric|gt:0',
+                'ingredientes' => 'nullable|array',
+                'ingredientes.*.insumo_id' => 'required_with:ingredientes|exists:insumos,id',
+                'ingredientes.*.cantidad' => 'required_with:ingredientes|numeric|gt:0',
             ]);
 
             $activo = $request->has('activo') && $request->activo == '1';
@@ -158,6 +172,8 @@ class InventarioController extends Controller
                 'stock_minimo' => $validated['stock_minimo'],
                 'activo' => $activo,
             ]);
+
+            $this->guardarReceta($insumo, $validated);
 
             return response()->json([
                 'success' => true,
@@ -178,6 +194,20 @@ class InventarioController extends Controller
                 'message' => 'Error al actualizar insumo.',
             ], 500);
         }
+    }
+
+    /** Guarda (o quita) la receta de un insumo preparado a partir de los datos validados. */
+    private function guardarReceta(Insumo $insumo, array $validated): void
+    {
+        $filas = $validated['ingredientes'] ?? [];
+        $rendimiento = isset($validated['rendimiento']) ? (float) $validated['rendimiento'] : null;
+
+        if ($filas !== [] && $rendimiento === null) {
+            // Sin rendimiento indicado, rinde lo que suman los ingredientes
+            $rendimiento = (float) collect($filas)->sum('cantidad');
+        }
+
+        $insumo->guardarReceta($rendimiento, $filas);
     }
 
     public function destroy($id)
@@ -227,6 +257,25 @@ class InventarioController extends Controller
             $tipoMovimiento = $validated['tipo_movimiento'];
 
             $stockAnterior = $insumo->stock_actual;
+
+            // Cargar un insumo preparado consume sus ingredientes (y queda en la bitácora)
+            if ($tipoMovimiento === 'entrada' && $insumo->esPreparado()) {
+                try {
+                    $insumo = app(InventarioService::class)
+                        ->registrarMovimiento($insumo, 'entrada', (float) $cantidad, $validated['motivo'], Auth::id());
+                } catch (\DomainException $e) {
+                    DB::rollBack();
+
+                    return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+                }
+                DB::commit();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Preparación registrada: se descontaron los ingredientes.',
+                    'stock_actual' => $insumo->stock_actual,
+                ]);
+            }
 
             if ($tipoMovimiento === 'entrada') {
                 $insumo->stock_actual += $cantidad;

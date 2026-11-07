@@ -17,11 +17,27 @@ class AdminInventarioController extends Controller
 {
     public function index(): JsonResponse
     {
-        return response()->json(
-            Insumo::where('activo', true)
-                ->orderBy('nombre')
-                ->get(['id', 'nombre', 'codigo', 'stock_actual', 'stock_minimo', 'unidad_medida'])
-        );
+        $insumos = Insumo::where('activo', true)
+            ->with('ingredientes')
+            ->orderBy('nombre')
+            ->get()
+            ->map(function (Insumo $i) {
+                $datos = $i->only(['id', 'nombre', 'codigo', 'stock_actual', 'stock_minimo', 'unidad_medida']);
+
+                // Insumo preparado: la app muestra qué se descontará al cargarlo
+                if ($i->esPreparado()) {
+                    $datos['rendimiento'] = (float) $i->rendimiento;
+                    $datos['ingredientes'] = $i->ingredientes->map(fn (Insumo $g) => [
+                        'nombre' => $g->nombre,
+                        'unidad_medida' => $g->unidad_medida,
+                        'cantidad' => (float) $g->pivot->cantidad,
+                    ])->values();
+                }
+
+                return $datos;
+            });
+
+        return response()->json($insumos);
     }
 
     public function store(Request $request, InventarioService $inventario): JsonResponse

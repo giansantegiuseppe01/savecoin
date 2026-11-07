@@ -95,6 +95,9 @@
                                 <td><strong>{{ $insumo->codigo }}</strong></td>
                                 <td>
                                     <strong>{{ $insumo->nombre }}</strong>
+                                    @if($insumo->esPreparado())
+                                    <span class="badge bg-info text-dark" title="Se prepara con otros insumos">Preparado</span>
+                                    @endif
                                     @if($insumo->descripcion)
                                     <br><small class="text-muted">{{ Str::limit($insumo->descripcion, 30) }}</small>
                                     @endif
@@ -117,7 +120,7 @@
                                 <td class="text-center">
                                     <div class="btn-group" role="group">
                                         <button class="btn btn-sm btn-warning btn-action" 
-                                                onclick="abrirModalEditar({{ $insumo->id }}, @js($insumo->codigo), @js($insumo->nombre), @js($insumo->descripcion ?? ''), @js($insumo->unidad_medida), {{ (float) $insumo->costo_unitario }}, {{ (float) $insumo->stock_actual }}, {{ (float) $insumo->stock_minimo }}, {{ $insumo->activo ? 'true' : 'false' }})"
+                                                onclick="abrirModalEditar({{ $insumo->id }}, @js($insumo->codigo), @js($insumo->nombre), @js($insumo->descripcion ?? ''), @js($insumo->unidad_medida), {{ (float) $insumo->costo_unitario }}, {{ (float) $insumo->stock_actual }}, {{ (float) $insumo->stock_minimo }}, {{ $insumo->activo ? 'true' : 'false' }}, @js($insumo->rendimiento !== null ? (float) $insumo->rendimiento : null), @js($insumo->ingredientes->map(fn ($i) => ['insumo_id' => $i->id, 'cantidad' => (float) $i->pivot->cantidad])->values()))"
                                                 title="Editar Insumo">
                                             <i class="bi bi-pencil"></i>
                                         </button>
@@ -203,6 +206,25 @@
                             <label class="form-check-label" for="activoCheck">Activo</label>
                         </div>
                     </div>
+                    <hr>
+                    <div class="mb-2">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="crearEsPreparado" onchange="alternarReceta('crear')">
+                            <label class="form-check-label" for="crearEsPreparado"><strong>Es un insumo preparado</strong> (se hace con otros insumos)</label>
+                        </div>
+                        <small class="text-muted">Al cargar stock de este insumo se descontarán sus ingredientes en proporción.</small>
+                    </div>
+                    <div id="crearReceta" style="display:none">
+                        <div class="mb-2">
+                            <label class="form-label">Un lote rinde</label>
+                            <input type="number" name="rendimiento" id="crearRendimiento" class="form-control" step="0.0001" min="0" placeholder="Por defecto, la suma de los ingredientes">
+                        </div>
+                        <label class="form-label">Ingredientes de un lote</label>
+                        <div id="crearFilas"></div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="agregarIngrediente('crear')">
+                            <i class="bi bi-plus"></i> Agregar ingrediente
+                        </button>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -274,6 +296,25 @@
                             <label class="form-check-label" for="editarActivoCheck">Activo</label>
                         </div>
                     </div>
+                    <hr>
+                    <div class="mb-2">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="editarEsPreparado" onchange="alternarReceta('editar')">
+                            <label class="form-check-label" for="editarEsPreparado"><strong>Es un insumo preparado</strong> (se hace con otros insumos)</label>
+                        </div>
+                        <small class="text-muted">Al cargar stock de este insumo se descontarán sus ingredientes en proporción.</small>
+                    </div>
+                    <div id="editarReceta" style="display:none">
+                        <div class="mb-2">
+                            <label class="form-label">Un lote rinde</label>
+                            <input type="number" name="rendimiento" id="editarRendimiento" class="form-control" step="0.0001" min="0" placeholder="Por defecto, la suma de los ingredientes">
+                        </div>
+                        <label class="form-label">Ingredientes de un lote</label>
+                        <div id="editarFilas"></div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="agregarIngrediente('editar')">
+                            <i class="bi bi-plus"></i> Agregar ingrediente
+                        </button>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -344,7 +385,36 @@
 
 @push('scripts')
 <script>
-function abrirModalEditar(id, codigo, nombre, descripcion, unidadMedida, costoUnitario, stockActual, stockMinimo, activo) {
+const INSUMOS_DISPONIBLES = @json($todosInsumos);
+let ingredienteFilaId = 0;
+
+function alternarReceta(prefijo) {
+    const activo = document.getElementById(prefijo + 'EsPreparado').checked;
+    document.getElementById(prefijo + 'Receta').style.display = activo ? 'block' : 'none';
+    // Sin el interruptor, no se envía receta (y se borra la que hubiera)
+    document.querySelectorAll('#' + prefijo + 'Receta input, #' + prefijo + 'Receta select').forEach(el => el.disabled = !activo);
+    if (activo && document.getElementById(prefijo + 'Filas').children.length === 0) agregarIngrediente(prefijo);
+}
+
+function agregarIngrediente(prefijo, insumoId = '', cantidad = '') {
+    const n = ++ingredienteFilaId; // contador: Date.now() repetía nombres de campo al crear filas seguidas
+    const propio = prefijo === 'editar' ? document.getElementById('editarInsumoId').value : '';
+    const opciones = INSUMOS_DISPONIBLES
+        .filter(i => String(i.id) !== String(propio))
+        .map(i => `<option value="${i.id}" ${String(i.id) === String(insumoId) ? 'selected' : ''}>${i.nombre.replace(/</g, '&lt;')} (${i.unidad_medida})</option>`)
+        .join('');
+    const fila = document.createElement('div');
+    fila.className = 'input-group mb-2';
+    fila.innerHTML = `
+        <select name="ingredientes[${n}][insumo_id]" class="form-select" required>
+            <option value="">Insumo...</option>${opciones}
+        </select>
+        <input type="number" name="ingredientes[${n}][cantidad]" class="form-control" step="0.0001" min="0.0001" placeholder="Cantidad" value="${cantidad}" required style="max-width:130px">
+        <button type="button" class="btn btn-outline-danger" onclick="this.parentElement.remove()"><i class="bi bi-x"></i></button>`;
+    document.getElementById(prefijo + 'Filas').appendChild(fila);
+}
+
+function abrirModalEditar(id, codigo, nombre, descripcion, unidadMedida, costoUnitario, stockActual, stockMinimo, activo, rendimiento = null, ingredientes = []) {
     document.getElementById('editarInsumoId').value = id;
     document.getElementById('editarCodigo').value = codigo;
     document.getElementById('editarNombre').value = nombre;
@@ -354,6 +424,13 @@ function abrirModalEditar(id, codigo, nombre, descripcion, unidadMedida, costoUn
     document.getElementById('editarStockActual').value = stockActual;
     document.getElementById('editarStockMinimo').value = stockMinimo;
     document.getElementById('editarActivoCheck').checked = activo;
+
+    // Receta del insumo preparado
+    document.getElementById('editarFilas').innerHTML = '';
+    document.getElementById('editarEsPreparado').checked = ingredientes.length > 0;
+    document.getElementById('editarRendimiento').value = rendimiento ?? '';
+    ingredientes.forEach(f => agregarIngrediente('editar', f.insumo_id, f.cantidad));
+    alternarReceta('editar');
     
     const modal = new bootstrap.Modal(document.getElementById('editarInsumoModal'));
     modal.show();
@@ -382,6 +459,9 @@ function eliminarInsumo(insumoId, nombre) {
         });
     }
 }
+
+// Los campos de receta empiezan desactivados hasta marcar "Es un insumo preparado"
+alternarReceta('crear');
 
 // Manejar envío de formularios con AJAX
 document.querySelectorAll('#formCrearInsumo, #formEditarInsumo, #formMovimientoStock').forEach(form => {
