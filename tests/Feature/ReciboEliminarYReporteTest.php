@@ -214,7 +214,7 @@ class ReciboEliminarYReporteTest extends TestCase
         $r4 = $this->actingAs($admin)->get("/reportes/ventas-productos?fecha_inicio={$desde}&fecha_fin={$hoy}&agrupar=dia");
         $r4->assertOk();
         $this->assertCount(3, $r4->viewData('filas')); // hoy: perro y refresco; hace 3 días: perro
-        $this->assertEquals(9.0, $r4->viewData('totalUnidades'));
+        $this->assertEquals(10.0, $r4->viewData('totalUnidades')); // 5 + 1 de hoy y 4 de hace 3 días
     }
 
     public function test_el_empleado_no_ve_el_reporte(): void
