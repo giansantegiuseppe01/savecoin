@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cliente;
+use App\Models\Orden;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -10,7 +11,15 @@ class ClienteController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Cliente::query();
+        $abiertas = fn ($q) => $q->where('tipo', 'venta')->where('estado', 'abierta');
+        $query = Cliente::query()
+            ->withCount(['ordens as ordenes_total', 'ordens as tickets_abiertos' => $abiertas])
+            ->withSum(['ordens as pagado_sum' => fn ($q) => $q->where('tipo', 'venta')->whereIn('estado', ['cerrada', 'completada'])], 'total')
+            ->withSum(['ordens as deuda_sum' => $abiertas], 'total');
+
+        if ($request->boolean('con_deuda')) {
+            $query->whereHas('ordens', $abiertas);
+        }
 
         if ($request->filled('buscar')) {
             $buscar = $request->buscar;
@@ -33,9 +42,20 @@ class ClienteController extends Controller
         }
 
         // 2. Si es navegación convencional desde la Web de Laravel
-        $clientes = $query->orderBy('created_at', 'desc')->paginate(15);
+        $clientes = $query
+            ->with(['ordens' => fn ($q) => $abiertas($q)->orderBy('fecha_hora')])
+            ->when($request->boolean('con_deuda'), fn ($q) => $q->orderByDesc('deuda_sum'), fn ($q) => $q->orderBy('created_at', 'desc'))
+            ->paginate(15)
+            ->withQueryString();
 
-        return view('clientes.index', compact('clientes'));
+        // Totales de todos los clientes (no solo de la página que se ve)
+        $totalPagado = (float) Orden::where('tipo', 'venta')->whereIn('estado', ['cerrada', 'completada'])->whereNotNull('cliente_id')->sum('total');
+        $porCobrar = Orden::where('tipo', 'venta')->where('estado', 'abierta')->whereNotNull('cliente_id');
+        $totalPorCobrar = (float) (clone $porCobrar)->sum('total');
+        $clientesQueDeben = (clone $porCobrar)->distinct()->count('cliente_id');
+        $ticketsAbiertos = (clone $porCobrar)->count();
+
+        return view('clientes.index', compact('clientes', 'totalPagado', 'totalPorCobrar', 'clientesQueDeben', 'ticketsAbiertos'));
     }
 
     public function store(Request $request)
