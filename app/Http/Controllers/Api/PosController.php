@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\BitacoraInventario;
 use App\Models\Configuracion;
 use App\Models\DetalleOrden;
 use App\Models\Orden;
@@ -146,13 +145,6 @@ class PosController extends Controller
             // Generar numero_recibo basado en el ID serial
             $orden->numero_recibo = 'ORD-'.$orden->id;
             $orden->save();
-
-            // Actualizar orden_id en bitácoras si la orden está cerrada
-            if ($estado === 'cerrada') {
-                BitacoraInventario::where('orden_id', null)
-                    ->where('user_id', Auth::id())
-                    ->update(['orden_id' => $orden->id]);
-            }
 
             // Crear detalles solo si existen
             if (! empty($validated['detalles'])) {

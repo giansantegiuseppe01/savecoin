@@ -335,7 +335,8 @@ class InventarioController extends Controller
 
     public function bitacora(Request $request)
     {
-        $query = BitacoraInventario::with(['insumo', 'user']);
+        // Solo movimientos manuales: las ventas descuentan stock sin pasar por la bitácora
+        $query = BitacoraInventario::with(['insumo', 'user'])->whereNull('orden_id');
 
         if ($request->input('insumo_id')) {
             $query->where('insumo_id', $request->input('insumo_id'));
@@ -365,12 +366,16 @@ class InventarioController extends Controller
             'fecha_fin' => $request->input('fecha_fin'),
         ];
 
-        return view('inventario.bitacora', compact('movimientos', 'insumos', 'filtros'));
+        // Acciones sensibles (recibos eliminados, anulados, reembolsados...)
+        $acciones = \App\Models\BitacoraAccion::with('user')->orderByDesc('id')->paginate(15, ['*'], 'acciones');
+
+        return view('inventario.bitacora', compact('movimientos', 'insumos', 'filtros', 'acciones'));
     }
 
     public function bitacoraPdf(Request $request)
     {
-        $query = BitacoraInventario::with(['insumo', 'user']);
+        // Solo movimientos manuales: las ventas descuentan stock sin pasar por la bitácora
+        $query = BitacoraInventario::with(['insumo', 'user'])->whereNull('orden_id');
 
         if ($request->input('insumo_id')) {
             $query->where('insumo_id', $request->input('insumo_id'));

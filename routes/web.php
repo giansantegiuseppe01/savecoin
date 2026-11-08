@@ -4,6 +4,7 @@ use App\Http\Controllers\CategoriaLibroContableController; // ✅ IMPORTADO
 use App\Http\Controllers\ClienteController;
 use App\Http\Controllers\ConfiguracionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ReporteVentasController;
 use App\Http\Controllers\InventarioController;
 use App\Http\Controllers\LibroContableController;
 use App\Http\Controllers\ProductoController;
@@ -59,6 +60,9 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
 // Dashboard management routes (solo admin)
 Route::middleware(['auth', 'admin'])->group(function () {
+    // Reporte de ventas por producto
+    Route::get('/reportes/ventas-productos', [ReporteVentasController::class, 'productos'])->name('reportes.ventas-productos');
+
     // Receipts routes
     Route::prefix('recibos')->name('recibos.')->group(function () {
         Route::get('/', [ReciboController::class, 'index'])->name('index');
@@ -66,6 +70,7 @@ Route::middleware(['auth', 'admin'])->group(function () {
         Route::get('/{id}', [ReciboController::class, 'show'])->name('show');
         Route::get('/{id}/pdf', [ReciboController::class, 'pdfSingle'])->name('pdf-single');
         Route::post('/{id}/anular', [ReciboController::class, 'anular'])->name('anular');
+        Route::delete('/{id}', [ReciboController::class, 'destroy'])->name('destroy');
         Route::post('/{id}/reembolso', [ReciboController::class, 'createReembolso'])->name('reembolso');
     });
 

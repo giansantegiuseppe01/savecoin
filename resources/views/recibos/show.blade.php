@@ -221,10 +221,9 @@
                     <a href="{{ route('recibos.pdf-single', $orden->id) }}" class="btn btn-primary" target="_blank">
                         <i class="bi bi-file-earmark-pdf me-1"></i>Descargar PDF
                     </a>
-                    @if($orden->tipo === 'venta' && $orden->estado === 'completada')
+                    @if($orden->tipo === 'venta' && in_array($orden->estado, ['cerrada', 'completada']))
                     <form action="{{ route('recibos.anular', $orden->id) }}" method="POST" class="d-inline">
                         @csrf
-                        @method('PUT')
                         <button type="submit" class="btn btn-danger"
                                 onclick="return confirm('¿Está seguro de anular este recibo? Esta acción:\n• Marcará el recibo como anulado\n• Revertirá el stock de insumos automáticamente\n• Registrará el movimiento en la bitácora de inventario\n• Restará el monto de la ganancia del día')">
                             <i class="bi bi-x-circle me-1"></i>Anular Recibo
@@ -238,9 +237,58 @@
                         </button>
                     </form>
                     @endif
+                    @if($orden->tipo === 'venta' && auth()->user()->isAdmin())
+                    <button type="button" class="btn btn-outline-danger" onclick="eliminarRecibo(@js($orden->id), @js($orden->numero_recibo))">
+                        <i class="bi bi-trash me-1"></i>Eliminar Recibo
+                    </button>
+                    @endif
                 </div>
             </div>
         </div>
     </div>
 </div>
+{{-- Eliminar recibo (solo administrador): pide el motivo y queda en la bitácora --}}
+<div class="modal fade" id="eliminarReciboModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <form id="formEliminarRecibo" method="POST">
+                @csrf
+                @method('DELETE')
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="bi bi-trash me-2"></i>Eliminar recibo <span id="eliminarReciboNumero"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">Esta acción:</p>
+                    <ul class="small">
+                        <li>Quita el recibo de las ventas y de los reportes.</li>
+                        <li>Si era una venta cobrada, devuelve el inventario que descontó.</li>
+                        <li>Queda registrada en la Bitácora con tu usuario y el motivo.</li>
+                        <li>No modifica el libro contable: si el turno ya se cerró, regístralo a mano.</li>
+                    </ul>
+                    <label class="form-label">Motivo (obligatorio)</label>
+                    <textarea name="motivo" class="form-control" rows="3" minlength="3" maxlength="500" required
+                              placeholder="Ej: venta duplicada, error al cobrar..."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger"><i class="bi bi-trash me-1"></i>Eliminar recibo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 @endsection
+
+@push('scripts')
+<script>
+function eliminarRecibo(id, numero) {
+    document.getElementById('formEliminarRecibo').action = '{{ url('recibos') }}/' + id;
+    document.getElementById('eliminarReciboNumero').textContent = numero;
+    document.querySelector('#formEliminarRecibo textarea').value = '';
+    new bootstrap.Modal(document.getElementById('eliminarReciboModal')).show();
+}
+</script>
+@endpush
+
+

@@ -121,6 +121,65 @@
                 </div>
             </div>
         </div>
+
+        <!-- Registro de acciones sensibles -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="bi bi-shield-exclamation me-2"></i>Registro de acciones (recibos eliminados, anulados y reembolsados)</h5>
+            </div>
+            <div class="card-body">
+                @if($acciones->isEmpty())
+                    <p class="text-muted mb-0">Todavía no hay acciones registradas.</p>
+                @else
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>Fecha/Hora</th>
+                                <th>Acción</th>
+                                <th>Detalle</th>
+                                <th>Motivo</th>
+                                <th>Usuario</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($acciones as $accion)
+                            <tr>
+                                <td>{{ $accion->created_at->format('d/m/Y H:i:s') }}</td>
+                                <td>
+                                    @if($accion->accion === 'recibo_eliminado')
+                                        <span class="badge bg-danger">Recibo eliminado</span>
+                                    @elseif($accion->accion === 'recibo_anulado')
+                                        <span class="badge bg-warning text-dark">Recibo anulado</span>
+                                    @elseif($accion->accion === 'recibo_reembolsado')
+                                        <span class="badge bg-info text-dark">Reembolso</span>
+                                    @else
+                                        <span class="badge bg-secondary">{{ $accion->accion }}</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    {{ $accion->descripcion }}
+                                    @if(!empty($accion->datos['productos']))
+                                        <br><small class="text-muted">
+                                            @foreach($accion->datos['productos'] as $p)
+                                                {{ rtrim(rtrim(number_format($p['cantidad'], 2), '0'), '.') }} × {{ $p['producto'] }}@if(!$loop->last), @endif
+                                            @endforeach
+                                            @if(!empty($accion->datos['cajero'])) · Cajero: {{ $accion->datos['cajero'] }} @endif
+                                            @if(!empty($accion->datos['metodo_pago'])) · {{ ucfirst($accion->datos['metodo_pago']) }} @endif
+                                        </small>
+                                    @endif
+                                </td>
+                                <td><small>{{ $accion->motivo ?? '—' }}</small></td>
+                                <td><small>{{ $accion->user->name ?? 'Sistema' }}</small></td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-3">{{ $acciones->links() }}</div>
+                @endif
+            </div>
+        </div>
     </div>
 </div>
 @endsection

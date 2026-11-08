@@ -227,6 +227,12 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link {{ request()->routeIs('reportes.*') ? 'active' : '' }}"
+                   href="{{ route('reportes.ventas-productos') }}">
+                    <i class="bi bi-bar-chart-line"></i> Ventas por producto
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link {{ request()->routeIs('inventario.*') ? 'active' : '' }}" 
                    href="{{ route('inventario.index') }}">
                     <i class="bi bi-box-seam"></i> Inventario

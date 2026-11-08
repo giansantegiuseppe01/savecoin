@@ -10,8 +10,8 @@ class InventarioService
 {
     /**
      * Descuenta del inventario lo que consume la venta de $cantidad unidades de $producto
-     * (incluyendo, si es un combo, los insumos de todos sus productos incluidos) y deja
-     * registro en la bitácora. Devuelve el costo de los insumos consumidos.
+     * (incluyendo, si es un combo, los insumos de todos sus productos incluidos).
+     * Devuelve el costo de los insumos consumidos. No escribe en la bitácora de inventario.
      *
      * @param  array<int,string>  $advertencias  Se agregan avisos de stock insuficiente.
      */
@@ -37,23 +37,39 @@ class InventarioService
 
             $costo += (float) $insumo->costo_unitario * $cantidadTotal;
 
-            $stockAnterior = $insumo->stock_actual;
+            // La venta descuenta el stock pero no se anota en la bitácora: allí solo van
+            // las cargas, descargas y preparaciones hechas a mano.
             $insumo->stock_actual -= $cantidadTotal;
             $insumo->save();
-
-            BitacoraInventario::create([
-                'insumo_id' => $insumo->id,
-                'orden_id' => $ordenId,
-                'tipo_movimiento' => 'salida',
-                'cantidad_anterior' => $stockAnterior,
-                'cantidad_movimiento' => $cantidadTotal,
-                'cantidad_nueva' => $insumo->stock_actual,
-                'motivo' => 'Venta en '.$referencia.' - Producto: '.$producto->nombre,
-                'user_id' => $userId,
-            ]);
         }
 
         return $costo;
+    }
+
+    /**
+     * Devuelve al inventario lo que consumió una venta (al anularla, reembolsarla o eliminarla),
+     * con la misma regla que al venderla: los combos reponen los insumos de cada producto.
+     * Solo repone ventas que sí descontaron stock (cerradas/completadas).
+     *
+     * @return bool true si se repuso stock
+     */
+    public function reponerVenta(\App\Models\Orden $orden): bool
+    {
+        if ($orden->tipo !== 'venta' || ! in_array($orden->estado, ['cerrada', 'completada'], true)) {
+            return false;
+        }
+
+        $orden->loadMissing('detalles.producto');
+        foreach ($orden->detalles as $detalle) {
+            if (! $detalle->producto) {
+                continue;
+            }
+            foreach ($detalle->producto->consumoInsumos((float) $detalle->cantidad) as $insumoId => $cantidad) {
+                Insumo::whereKey($insumoId)->lockForUpdate()->first()?->increment('stock_actual', $cantidad);
+            }
+        }
+
+        return true;
     }
 
     /**

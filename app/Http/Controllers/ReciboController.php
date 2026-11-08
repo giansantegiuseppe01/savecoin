@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\BitacoraInventario;
+use App\Models\BitacoraAccion;
 use App\Models\Configuracion;
 use App\Models\DetalleOrden;
 use App\Models\Orden;
 use App\Models\Producto;
+use App\Models\Turno;
+use App\Services\InventarioService;
 use App\Services\ReciboPdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -114,47 +116,25 @@ class ReciboController extends Controller
                 return redirect()->back()->with('error', 'Solo se pueden anular recibos de venta.');
             }
 
+            // Si la venta había descontado stock, se devuelve (combos incluidos)
+            $repuesto = app(InventarioService::class)->reponerVenta($orden);
+
             // Marcar la orden como anulada
             $orden->estado = 'anulada';
             $orden->save();
 
-            // Revertir stock de insumos para cada producto en la orden
-            foreach ($orden->detalles as $detalle) {
-                $producto = $detalle->producto;
-                $cantidadProducto = $detalle->cantidad;
-
-                // Obtener insumos del producto (receta)
-                $insumosProducto = $producto->insumos;
-
-                foreach ($insumosProducto as $insumoPivot) {
-                    $insumo = $insumoPivot;
-                    $cantidadRequerida = $insumoPivot->pivot->cantidad_requerida;
-                    $cantidadTotal = $cantidadRequerida * $cantidadProducto;
-
-                    // Stock anterior
-                    $stockAnterior = $insumo->stock_actual;
-
-                    // Revertir stock (sumar)
-                    $insumo->stock_actual += $cantidadTotal;
-                    $insumo->save();
-
-                    // Registrar en bitácora de inventario
-                    BitacoraInventario::create([
-                        'insumo_id' => $insumo->id,
-                        'orden_id' => $orden->id,
-                        'tipo_movimiento' => 'reembolso',
-                        'cantidad_anterior' => $stockAnterior,
-                        'cantidad_movimiento' => $cantidadTotal,
-                        'cantidad_nueva' => $insumo->stock_actual,
-                        'motivo' => 'Anulación de recibo #'.$orden->numero_recibo.' - Producto: '.$producto->nombre,
-                        'user_id' => Auth::id(),
-                    ]);
-                }
-            }
+            BitacoraAccion::registrar(
+                'recibo_anulado',
+                'Recibo '.$orden->numero_recibo.' anulado (USD '.number_format((float) $orden->total, 2).')',
+                'orden',
+                $orden->id,
+                null,
+                ['numero_recibo' => $orden->numero_recibo, 'total' => (float) $orden->total, 'stock_repuesto' => $repuesto],
+            );
 
             DB::commit();
 
-            return redirect()->back()->with('success', 'Recibo anulado correctamente. Stock revertido y bitácora actualizada.');
+            return redirect()->back()->with('success', 'Recibo anulado correctamente. Stock devuelto al inventario.');
 
         } catch (\Exception $e) {
             report($e);
@@ -224,38 +204,19 @@ class ReciboController extends Controller
                 ]);
             }
 
-            // Marcar orden original como anulada
+            // Devolver stock (combos incluidos) y marcar el original como anulado
+            $repuesto = app(InventarioService::class)->reponerVenta($ordenOriginal);
             $ordenOriginal->estado = 'anulada';
             $ordenOriginal->save();
 
-            // Revertir stock de insumos
-            foreach ($ordenOriginal->detalles as $detalle) {
-                $producto = $detalle->producto;
-                $cantidadProducto = $detalle->cantidad;
-
-                $insumosProducto = $producto->insumos;
-
-                foreach ($insumosProducto as $insumoPivot) {
-                    $insumo = $insumoPivot;
-                    $cantidadRequerida = $insumoPivot->pivot->cantidad_requerida;
-                    $cantidadTotal = $cantidadRequerida * $cantidadProducto;
-
-                    $stockAnterior = $insumo->stock_actual;
-                    $insumo->stock_actual += $cantidadTotal;
-                    $insumo->save();
-
-                    BitacoraInventario::create([
-                        'insumo_id' => $insumo->id,
-                        'orden_id' => $reembolso->id,
-                        'tipo_movimiento' => 'reembolso',
-                        'cantidad_anterior' => $stockAnterior,
-                        'cantidad_movimiento' => $cantidadTotal,
-                        'cantidad_nueva' => $insumo->stock_actual,
-                        'motivo' => 'Reembolso de recibo #'.$ordenOriginal->numero_recibo.' - Producto: '.$producto->nombre,
-                        'user_id' => Auth::id(),
-                    ]);
-                }
-            }
+            BitacoraAccion::registrar(
+                'recibo_reembolsado',
+                'Recibo '.$ordenOriginal->numero_recibo.' reembolsado con '.$reembolso->numero_recibo.' (USD '.number_format((float) $ordenOriginal->total, 2).')',
+                'orden',
+                $ordenOriginal->id,
+                null,
+                ['numero_recibo' => $ordenOriginal->numero_recibo, 'reembolso' => $reembolso->numero_recibo, 'stock_repuesto' => $repuesto],
+            );
 
             DB::commit();
 
@@ -266,6 +227,93 @@ class ReciboController extends Controller
             DB::rollBack();
 
             return redirect()->back()->with('error', 'Error al crear reembolso.');
+        }
+    }
+
+    /**
+     * Elimina un recibo (solo administradores). Si era una venta que había descontado inventario,
+     * lo devuelve; recalcula el turno si ya estaba cerrado y deja todo anotado en la bitácora
+     * de acciones con el motivo y una copia de lo que tenía el recibo.
+     */
+    public function destroy(Request $request, $id)
+    {
+        abort_unless(Auth::user()?->isAdmin(), 403);
+
+        $validated = $request->validate([
+            'motivo' => 'required|string|min:3|max:500',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $orden = Orden::with(['detalles.producto', 'user', 'cliente'])->lockForUpdate()->findOrFail($id);
+
+            if ($orden->tipo !== 'venta') {
+                DB::rollBack();
+
+                return redirect()->back()->with('error', 'Solo se pueden eliminar recibos de venta. Un reembolso no se elimina.');
+            }
+
+            $copia = [
+                'numero_recibo' => $orden->numero_recibo,
+                'estado' => $orden->estado,
+                'total_usd' => (float) $orden->total,
+                'tasa_cambio' => (float) $orden->tasa_cambio,
+                'metodo_pago' => $orden->metodo_pago,
+                'referencia_pago' => $orden->referencia_pago,
+                'cliente' => $orden->cliente_nombre ?? $orden->cliente?->nombre,
+                'cajero' => $orden->user?->name,
+                'turno_id' => $orden->turno_id,
+                'fecha_hora' => optional($orden->fecha_hora)->toDateTimeString(),
+                'productos' => $orden->detalles->map(fn ($d) => [
+                    'producto' => $d->producto_nombre ?? $d->producto?->nombre,
+                    'cantidad' => (float) $d->cantidad,
+                    'subtotal' => (float) $d->subtotal,
+                ])->values()->all(),
+            ];
+
+            // Si ya estaba anulada, el stock se devolvió entonces; si no, se devuelve ahora
+            $repuesto = app(InventarioService::class)->reponerVenta($orden);
+            $copia['stock_repuesto'] = $repuesto;
+
+            $turno = $orden->turno_id ? Turno::find($orden->turno_id) : null;
+            $orden->delete();
+
+            // Un turno cerrado conserva sus totales: se recalculan sin esta venta
+            $turnoAjustado = false;
+            if ($turno && $turno->isCerrado()) {
+                $turno->total_ventas = $turno->ordens()->where('estado', 'cerrada')->sum('total');
+                $turno->numero_ordenes = $turno->ordens()->where('estado', 'cerrada')->count();
+                $turno->save();
+                $turnoAjustado = true;
+            }
+            $copia['turno_recalculado'] = $turnoAjustado;
+
+            BitacoraAccion::registrar(
+                'recibo_eliminado',
+                'Recibo '.$copia['numero_recibo'].' eliminado (USD '.number_format($copia['total_usd'], 2).', '.$orden->estado.')',
+                'orden',
+                $orden->id,
+                $validated['motivo'],
+                $copia,
+            );
+
+            DB::commit();
+
+            $aviso = 'Recibo '.$copia['numero_recibo'].' eliminado y registrado en la bitácora.';
+            if ($repuesto) {
+                $aviso .= ' El inventario se devolvió.';
+            }
+            if ($turnoAjustado) {
+                $aviso .= ' El turno ya estaba cerrado: se recalcularon sus totales, pero el libro contable no se modifica (regístralo a mano si hace falta).';
+            }
+
+            return redirect()->route('recibos.index')->with('success', $aviso);
+        } catch (\Exception $e) {
+            report($e);
+            DB::rollBack();
+
+            return redirect()->back()->with('error', 'No se pudo eliminar el recibo.');
         }
     }
 
