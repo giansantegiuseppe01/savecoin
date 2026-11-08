@@ -210,6 +210,7 @@ class OrderProvider with ChangeNotifier {
     String? notas,
   }) async {
     try {
+      _motivoSinSincronizar = null;
       var orden = await _asegurarOrden(cliente, tasaCambio);
       final idAntes = orden.id;
       final anteriores = detallesDe(orden);
@@ -221,7 +222,6 @@ class OrderProvider with ChangeNotifier {
 
       final actuales = detallesDe(orden);
       final advertencias = <String>[];
-      _motivoSinSincronizar = null;
       orden = await _sincronizar(orden, advertencias);
       if (orden.isLocal && _motivoSinSincronizar != null) {
         advertencias.add('Comanda guardada solo en la tablet (sin sincronizar): $_motivoSinSincronizar');
@@ -290,6 +290,7 @@ class OrderProvider with ChangeNotifier {
     String? referencia,
   }) async {
     try {
+      _motivoSinSincronizar = null;
       var orden = await _asegurarOrden(cliente, tasaCambio);
       orden = await _guardarDetalles(orden, detalles, aplicaIva: aplicaIva);
 
@@ -311,7 +312,6 @@ class OrderProvider with ChangeNotifier {
       );
 
       final advertencias = <String>[];
-      _motivoSinSincronizar = null;
       orden = await _sincronizar(orden, advertencias);
 
       _currentOrden = null;
@@ -627,7 +627,7 @@ class OrderProvider with ChangeNotifier {
           rethrow;
         }
         logd('No se pudo enviar la orden al servidor, queda pendiente: $e');
-        _motivoSinSincronizar = _describir(e);
+        _motivoSinSincronizar ??= _describir(e);
         resultado = orden.copyWith(isLocal: true);
       }
     } else {
