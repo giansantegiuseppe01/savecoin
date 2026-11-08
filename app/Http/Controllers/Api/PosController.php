@@ -237,6 +237,9 @@ class PosController extends Controller
                 Log::info('Orden no existe, creando nueva');
                 $orden = new Orden;
                 $orden->numero_recibo = 'TEMP-'.time(); // Temporal hasta tener el ID
+                // Sin dueño la inserción fallaba (user_id es obligatorio) y la comanda quedaba
+                // "sin sincronizar" con error 500 cuando la tablet tenía una orden que el servidor no conocía
+                $orden->user_id = Auth::id();
                 // Si el cliente ya no existe en el servidor (la tablet puede tener uno viejo guardado),
                 // la venta se registra igual con el nombre; antes fallaba por la llave foránea
                 $orden->cliente_id = Cliente::whereKey($request->input('cliente_id'))->exists()
@@ -438,6 +441,8 @@ class PosController extends Controller
 
             return response()->json([
                 'message' => 'Error al actualizar orden.',
+                // Solo con APP_DEBUG=true: ayuda a ver la causa real desde la tablet
+                'error' => config('app.debug') ? class_basename($e).': '.$e->getMessage() : null,
             ], 500);
         }
     }

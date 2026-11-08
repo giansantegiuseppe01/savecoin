@@ -380,4 +380,27 @@ class PosOrdenesTest extends TestCase
         $this->actingAs($empleado, 'sanctum')
             ->putJson("/api/pos/ordenes/{$tercera}", $payload('00123456'))->assertOk();
     }
+
+    public function test_actualizar_una_orden_que_el_servidor_no_conoce_la_crea_con_su_dueno(): void
+    {
+        $user = User::factory()->create();
+        $this->turnoAbierto($user);
+        [$producto] = $this->productoConInsumo(10, 1);
+        $uuid = (string) Str::uuid();
+
+        // Caso de la comanda: la tablet tiene una orden abierta que el servidor nunca recibió
+        $this->actingAs($user, 'sanctum')->putJson("/api/pos/ordenes/{$uuid}", [
+            'estado' => 'abierta',
+            'cliente_nombre' => 'General',
+            'subtotal' => 5,
+            'total' => 5,
+            'detalles' => [[
+                'producto_id' => $producto->id, 'producto_nombre' => 'Pan', 'precio_unitario' => 5, 'cantidad' => 1,
+            ]],
+        ])->assertOk();
+
+        $orden = Orden::where('estado', 'abierta')->firstOrFail();
+        $this->assertSame($user->id, (int) $orden->user_id);
+        $this->assertSame(1, $orden->detalles()->count());
+    }
 }

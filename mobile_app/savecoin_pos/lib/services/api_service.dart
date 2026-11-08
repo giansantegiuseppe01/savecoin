@@ -130,7 +130,9 @@ class ApiService {
     try {
       final data = _decode(response);
       if (data is Map && data['message'] is String) {
-        return '$fallback: ${data['message']}';
+        // `error` solo llega si el servidor tiene APP_DEBUG=true: la causa técnica real
+        final detalle = data['error'] is String ? ' (${data['error']})' : '';
+        return '$fallback: ${data['message']}$detalle';
       }
     } catch (_) {}
     return '$fallback (${response.statusCode})';
