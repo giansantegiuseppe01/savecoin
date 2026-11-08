@@ -44,8 +44,10 @@ class ReciboEliminarYReporteTest extends TestCase
     private function venta(User $user, array $lineas, array $attrs = []): Orden
     {
         $total = collect($lineas)->sum(fn ($l) => (float) $l[0]->precio_venta * $l[1]);
-        $orden = Orden::forceCreate(array_merge([
-            'id' => (string) Str::uuid(),
+        // El id se guarda aparte: tras el insert, Eloquent lo reemplaza por el rowid de SQLite
+        $id = (string) Str::uuid();
+        Orden::forceCreate(array_merge([
+            'id' => $id,
             'numero_recibo' => 'ORD-'.Str::random(6),
             'user_id' => $user->id,
             'cliente_nombre' => 'General',
@@ -61,7 +63,7 @@ class ReciboEliminarYReporteTest extends TestCase
 
         foreach ($lineas as [$producto, $cantidad]) {
             DetalleOrden::create([
-                'orden_id' => $orden->id,
+                'orden_id' => $id,
                 'producto_id' => $producto->id,
                 'producto_nombre' => $producto->nombre,
                 'cantidad' => $cantidad,
@@ -71,7 +73,7 @@ class ReciboEliminarYReporteTest extends TestCase
             ]);
         }
 
-        return $orden;
+        return Orden::whereKey($id)->firstOrFail();
     }
 
     public function test_solo_el_admin_elimina_recibos_y_exige_motivo(): void
@@ -161,9 +163,10 @@ class ReciboEliminarYReporteTest extends TestCase
     {
         $admin = User::factory()->admin()->create();
         $pan = $this->insumo(10);
+        $vieja = $this->venta($admin, [[$this->producto('Perro', 2), 1]], ['numero_recibo' => 'ORD-VIEJA']);
 
         BitacoraInventario::create([
-            'insumo_id' => $pan->id, 'orden_id' => 'ORD-VIEJA', 'tipo_movimiento' => 'salida',
+            'insumo_id' => $pan->id, 'orden_id' => $vieja->id, 'tipo_movimiento' => 'salida',
             'cantidad_anterior' => 10, 'cantidad_movimiento' => 1, 'cantidad_nueva' => 9,
             'motivo' => 'Venta en ORD-VIEJA', 'user_id' => $admin->id,
         ]);
