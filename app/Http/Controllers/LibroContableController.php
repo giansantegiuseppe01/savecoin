@@ -204,7 +204,7 @@ class LibroContableController extends Controller
     private function calcularSaldoAntesDeFecha($fecha): float
     {
         // Calcular saldo total de todos los movimientos ANTES de esa fecha
-        $saldo = LibroContable::where('fecha', '<', $fecha)
+        $saldo = LibroContable::where('fecha', '<=', $fecha)
             ->get()
             ->reduce(function ($carry, $movimiento) {
                 if ($movimiento->tipo_movimiento === 'entrada') {
