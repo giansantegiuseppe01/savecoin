@@ -210,6 +210,7 @@ class PosController extends Controller
 
     public function getOrden($id): JsonResponse
     {
+        abort_unless(Orden::idValido($id), 404);
         $orden = Orden::with(['user', 'cliente', 'detalles.producto'])->findOrFail($id);
 
         if (! $this->puedeAccederOrden($orden)) {
@@ -229,7 +230,7 @@ class PosController extends Controller
             DB::beginTransaction();
 
             // Intentar encontrar la orden por el ID (puede venir como string desde móvil)
-            $orden = Orden::where('id', $id)->first();
+            $orden = Orden::idValido($id) ? Orden::where('id', $id)->first() : null;
 
             if (! $orden) {
                 // La orden no existe en el servidor, crearla nueva

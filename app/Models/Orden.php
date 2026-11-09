@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Schema;
 
 class Orden extends Model
 {
@@ -15,6 +16,33 @@ class Orden extends Model
     // El id es texto (numérico desde la secuencia o UUID desde la app móvil): sin esto
     // Eloquent lo convierte a entero y un UUID se corrompe (p. ej. "5097e84d-…" -> 5097).
     protected $keyType = 'string';
+
+    private static ?bool $idNumerico = null;
+
+    /**
+     * En producción (PostgreSQL) `ordens.id` es bigint con identidad; en instalaciones antiguas
+     * (y en los tests con sqlite) sigue siendo texto/UUID. Detecta cuál es.
+     */
+    public static function idEsNumerico(): bool
+    {
+        if (self::$idNumerico === null) {
+            $tipo = '';
+            foreach (Schema::getColumns((new self)->getTable()) as $col) {
+                if ($col['name'] === 'id') {
+                    $tipo = strtolower((string) ($col['type_name'] ?? $col['type'] ?? ''));
+                }
+            }
+            self::$idNumerico = (bool) preg_match('/int/', $tipo);
+        }
+
+        return self::$idNumerico;
+    }
+
+    /** Un id con formato de UUID (o cualquier texto) no puede existir si la columna es numérica. */
+    public static function idValido(mixed $id): bool
+    {
+        return ! self::idEsNumerico() || ctype_digit((string) $id);
+    }
 
     protected $fillable = [
         'numero_recibo',
@@ -111,7 +139,7 @@ class Orden extends Model
         }
 
         return $consulta
-            ->when($exceptoId, fn ($q) => $q->where('id', '!=', $exceptoId))
+            ->when($exceptoId && self::idValido($exceptoId), fn ($q) => $q->where('id', '!=', $exceptoId))
             ->get()
             ->first(fn (self $o) => self::normalizarReferencia((string) $o->referencia_pago) === $normalizada);
     }

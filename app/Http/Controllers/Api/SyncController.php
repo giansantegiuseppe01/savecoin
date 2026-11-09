@@ -70,9 +70,11 @@ class SyncController extends Controller
 
                     // Crear orden
                     // `id` no es asignable en masa: se fija explícitamente para conservar el UUID de la app
+                    // Si `ordens.id` es numérico (identidad en PostgreSQL) la base genera el id y el UUID
+                    // de la app no se usa; la venta se reconoce por su numero_recibo.
                     $ordenId = (string) $ordenData['id'];
                     $orden = (new Orden)->forceFill([
-                        'id' => $ordenId,
+                        ...(Orden::idEsNumerico() ? [] : ['id' => $ordenId]),
                         'numero_recibo' => $ordenData['numero_recibo'],
                         'user_id' => auth()->id(), // La ruta exige autenticación (auth:sanctum)
                         'cliente_id' => $clienteId,
@@ -96,6 +98,9 @@ class SyncController extends Controller
                         'is_local' => false,
                     ]);
                     $orden->save();
+                    if (Orden::idEsNumerico()) {
+                        $ordenId = (string) $orden->getKey();
+                    }
 
                     // Crear detalles de orden
                     foreach ($ordenData['detalles'] as $detalleData) {
