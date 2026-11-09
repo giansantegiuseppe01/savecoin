@@ -182,7 +182,7 @@ class ReciboController extends Controller
                 'tasa_cambio' => $tasaCambio,
                 'costo_insumos' => -$ordenOriginal->costo_insumos,
                 'beneficio_bruto' => -$ordenOriginal->beneficio_bruto,
-                'estado' => 'completada',
+                'estado' => 'cerrada',
                 'metodo_pago' => $ordenOriginal->metodo_pago,
                 'turno' => $ordenOriginal->turno,
                 'fecha_hora' => now(),

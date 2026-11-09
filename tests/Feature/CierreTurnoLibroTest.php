@@ -29,7 +29,6 @@ class CierreTurnoLibroTest extends TestCase
 
         foreach ($ventas as $i => [$totalUsd, $tasa]) {
             Orden::forceCreate([
-                'id' => (string) Str::uuid(),
                 'numero_recibo' => 'ORD-T'.$i.Str::random(4),
                 'user_id' => $user->id,
                 'turno_id' => $turno->id,

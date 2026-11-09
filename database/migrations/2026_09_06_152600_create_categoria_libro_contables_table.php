@@ -11,6 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Instalaciones existentes: la tabla ya está creada con este mismo esquema.
+        if (Schema::hasTable('categoria_libro_contables')) {
+            return;
+        }
+
         Schema::create('categoria_libro_contables', function (Blueprint $table) {
             $table->id();
             $table->string('nombre')->unique();

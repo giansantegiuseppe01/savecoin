@@ -255,10 +255,7 @@ class ApiSecurityTest extends TestCase
         $a = User::factory()->create();
         $b = User::factory()->create();
 
-        $id = (string) \Illuminate\Support\Str::uuid();
-
-        Orden::forceCreate([
-            'id' => $id,
+        $id = Orden::forceCreate([
             'numero_recibo' => 'R-IDOR-1',
             'user_id' => $a->id,
             'cliente_nombre' => 'X',
@@ -268,7 +265,7 @@ class ApiSecurityTest extends TestCase
             'total' => 1,
             'tasa_cambio' => 1,
             'fecha_hora' => now(),
-        ]);
+        ])->id;
 
         $this->actingAs($b, 'sanctum')->getJson("/api/pos/ordenes/{$id}")->assertForbidden();
         $this->actingAs($b, 'sanctum')

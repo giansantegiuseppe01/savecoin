@@ -12,6 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('insumo_ingredientes')) {
+            return;
+        }
+
         Schema::create('insumo_ingredientes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('insumo_id')->constrained('insumos')->onDelete('cascade');
@@ -22,16 +26,16 @@ return new class extends Migration
             $table->unique(['insumo_id', 'ingrediente_id']);
         });
 
-        Schema::table('insumos', function (Blueprint $table) {
-            $table->decimal('rendimiento', 12, 4)->nullable()->after('stock_minimo');
-        });
+        // Solo instalaciones anteriores a la unificación (ya vienen con la columna en create_insumos)
+        if (! Schema::hasColumn('insumos', 'rendimiento')) {
+            Schema::table('insumos', function (Blueprint $table) {
+                $table->decimal('rendimiento', 12, 4)->nullable()->after('stock_minimo');
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('insumos', function (Blueprint $table) {
-            $table->dropColumn('rendimiento');
-        });
         Schema::dropIfExists('insumo_ingredientes');
     }
 };

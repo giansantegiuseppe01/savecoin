@@ -22,7 +22,6 @@ return new class extends Migration
             $table->string('imagen_url')->nullable();
             $table->boolean('activo')->default(true);
             $table->boolean('preparado_en_cocina')->default(true);
-            $table->integer('tiempo_preparacion_minutos')->default(0);
             $table->timestamps();
             $table->softDeletes();
         });

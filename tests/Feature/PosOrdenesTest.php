@@ -62,9 +62,7 @@ class PosOrdenesTest extends TestCase
         [$producto, $insumo] = $this->productoConInsumo(10, 2);
 
         // Orden abierta creada por la app con conexión (is_local = false)
-        $id = (string) Str::uuid();
-        Orden::forceCreate([
-            'id' => $id,
+        $id = Orden::forceCreate([
             'numero_recibo' => 'ORD-ONLINE-1',
             'user_id' => $empleado->id,
             'cliente_nombre' => 'General',
@@ -75,7 +73,7 @@ class PosOrdenesTest extends TestCase
             'tasa_cambio' => 1,
             'fecha_hora' => now(),
             'is_local' => false,
-        ]);
+        ])->id;
 
         $payload = [
             'estado' => 'cerrada',
@@ -112,9 +110,7 @@ class PosOrdenesTest extends TestCase
         $this->turnoAbierto($empleado);
         [$producto, $insumo] = $this->productoConInsumo(10, 2);
 
-        $id = (string) Str::uuid();
-        Orden::forceCreate([
-            'id' => $id,
+        $id = Orden::forceCreate([
             'numero_recibo' => 'ORD-ONLINE-2',
             'user_id' => $empleado->id,
             'cliente_nombre' => 'General',
@@ -125,7 +121,7 @@ class PosOrdenesTest extends TestCase
             'tasa_cambio' => 1,
             'fecha_hora' => now(),
             'is_local' => false,
-        ]);
+        ])->id;
 
         $this->actingAs($empleado, 'sanctum')
             ->putJson("/api/pos/ordenes/{$id}", [
@@ -148,9 +144,7 @@ class PosOrdenesTest extends TestCase
         $this->turnoAbierto($empleado);
         [$producto] = $this->productoConInsumo(10, 1);
 
-        $id = (string) Str::uuid();
-        Orden::forceCreate([
-            'id' => $id,
+        $id = Orden::forceCreate([
             'numero_recibo' => 'ORD-ONLINE-3',
             'user_id' => $empleado->id,
             'cliente_nombre' => 'General',
@@ -161,7 +155,7 @@ class PosOrdenesTest extends TestCase
             'tasa_cambio' => 1,
             'fecha_hora' => now(),
             'is_local' => false,
-        ]);
+        ])->id;
 
         $linea = fn (int $cantidad) => [
             'producto_id' => $producto->id,
@@ -192,9 +186,7 @@ class PosOrdenesTest extends TestCase
         $this->turnoAbierto($empleado);
         [$producto] = $this->productoConInsumo(10, 1);
 
-        $id = (string) Str::uuid();
-        Orden::forceCreate([
-            'id' => $id,
+        $id = Orden::forceCreate([
             'numero_recibo' => 'ORD-REF-1',
             'user_id' => $empleado->id,
             'cliente_nombre' => 'General',
@@ -205,7 +197,7 @@ class PosOrdenesTest extends TestCase
             'tasa_cambio' => 1,
             'fecha_hora' => now(),
             'is_local' => false,
-        ]);
+        ])->id;
 
         $this->actingAs($empleado, 'sanctum')
             ->putJson("/api/pos/ordenes/{$id}", [
@@ -233,9 +225,7 @@ class PosOrdenesTest extends TestCase
         $this->turnoAbierto($empleado);
         [$producto, $insumo] = $this->productoConInsumo(10, 1);
 
-        $id = (string) Str::uuid();
-        Orden::forceCreate([
-            'id' => $id,
+        $id = Orden::forceCreate([
             'numero_recibo' => 'ORD-REF-2',
             'user_id' => $empleado->id,
             'cliente_nombre' => 'General',
@@ -246,7 +236,7 @@ class PosOrdenesTest extends TestCase
             'tasa_cambio' => 1,
             'fecha_hora' => now(),
             'is_local' => false,
-        ]);
+        ])->id;
 
         $payload = [
             'estado' => 'cerrada',
@@ -325,9 +315,7 @@ class PosOrdenesTest extends TestCase
         [$producto] = $this->productoConInsumo(10, 1);
 
         $abrir = function (string $recibo): string {
-            $id = (string) Str::uuid();
-            Orden::forceCreate([
-                'id' => $id,
+            $id = Orden::forceCreate([
                 'numero_recibo' => $recibo,
                 'user_id' => User::first()->id,
                 'cliente_nombre' => 'General',
@@ -338,7 +326,7 @@ class PosOrdenesTest extends TestCase
                 'tasa_cambio' => 1,
                 'fecha_hora' => now(),
                 'is_local' => false,
-            ]);
+            ])->id;
 
             return $id;
         };

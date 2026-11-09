@@ -16,7 +16,6 @@ class ClienteDeudaTest extends TestCase
     private function orden(User $u, ?Cliente $c, string $estado, float $total, string $tipo = 'venta'): Orden
     {
         return Orden::forceCreate([
-            'id' => (string) Str::uuid(),
             'numero_recibo' => 'ORD-'.Str::random(6),
             'user_id' => $u->id,
             'cliente_id' => $c?->id,
@@ -38,11 +37,11 @@ class ClienteDeudaTest extends TestCase
         $luis = Cliente::create(['nombre' => 'Luis', 'apellido' => 'Gómez', 'cedula' => 'V-2']);
 
         $this->orden($admin, $ana, 'cerrada', 10);
-        $this->orden($admin, $ana, 'completada', 5);
+        $this->orden($admin, $ana, 'cerrada', 5);
         $this->orden($admin, $ana, 'abierta', 6);      // debe
         $this->orden($admin, $ana, 'abierta', 4);      // debe
         $this->orden($admin, $ana, 'anulada', 50);     // no cuenta
-        $this->orden($admin, $ana, 'completada', 3, 'reembolso'); // no cuenta
+        $this->orden($admin, $ana, 'cerrada', 3, 'reembolso'); // no cuenta
         $this->orden($admin, $luis, 'cerrada', 8);     // paga todo
 
         $resp = $this->actingAs($admin)->get('/clientes')->assertOk();

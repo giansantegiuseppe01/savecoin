@@ -20,6 +20,7 @@ return new class extends Migration
             $table->decimal('stock_actual', 12, 4)->default(0);
             $table->string('unidad_medida', 50)->default('unidad'); // kg, litro, unidad, etc.
             $table->decimal('stock_minimo', 12, 4)->default(0);
+            $table->decimal('rendimiento', 12, 4)->nullable(); // insumos preparados: cantidad que rinde la receta
             $table->boolean('activo')->default(true);
             $table->timestamps();
             $table->softDeletes();

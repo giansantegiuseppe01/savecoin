@@ -44,10 +44,8 @@ class ReciboEliminarYReporteTest extends TestCase
     private function venta(User $user, array $lineas, array $attrs = []): Orden
     {
         $total = collect($lineas)->sum(fn ($l) => (float) $l[0]->precio_venta * $l[1]);
-        // El id se guarda aparte: tras el insert, Eloquent lo reemplaza por el rowid de SQLite
-        $id = (string) Str::uuid();
-        Orden::forceCreate(array_merge([
-            'id' => $id,
+        // El id lo genera la base de datos (igual que en producción)
+        $id = Orden::forceCreate(array_merge([
             'numero_recibo' => 'ORD-'.Str::random(6),
             'user_id' => $user->id,
             'cliente_nombre' => 'General',
@@ -59,7 +57,7 @@ class ReciboEliminarYReporteTest extends TestCase
             'tasa_cambio' => 100,
             'fecha_hora' => now(),
             'is_local' => false,
-        ], $attrs));
+        ], $attrs))->id;
 
         foreach ($lineas as [$producto, $cantidad]) {
             DetalleOrden::create([
@@ -153,7 +151,7 @@ class ReciboEliminarYReporteTest extends TestCase
     public function test_los_reembolsos_no_se_eliminan(): void
     {
         $admin = User::factory()->admin()->create();
-        $orden = $this->venta($admin, [[$this->producto('Perro', 2), 1]], ['tipo' => 'reembolso', 'estado' => 'completada']);
+        $orden = $this->venta($admin, [[$this->producto('Perro', 2), 1]], ['tipo' => 'reembolso', 'estado' => 'cerrada']);
 
         $this->actingAs($admin)->delete("/recibos/{$orden->id}", ['motivo' => 'prueba'])->assertSessionHas('error');
         $this->assertNotNull(Orden::find($orden->id));
@@ -185,7 +183,7 @@ class ReciboEliminarYReporteTest extends TestCase
         $this->venta($admin, [[$perro, 3], [$refresco, 1]]);
         $this->venta($admin, [[$perro, 2]]);
         $this->venta($admin, [[$perro, 9]], ['estado' => 'anulada']);
-        $this->venta($admin, [[$perro, 9]], ['tipo' => 'reembolso', 'estado' => 'completada']);
+        $this->venta($admin, [[$perro, 9]], ['tipo' => 'reembolso', 'estado' => 'cerrada']);
         $this->venta($admin, [[$perro, 4]], ['fecha_hora' => now()->subDays(3)]); // otro día
         $eliminada = $this->venta($admin, [[$perro, 7]]);
         $eliminada->delete();

@@ -104,9 +104,7 @@ class ComboProductoTest extends TestCase
         $combo->componentes()->attach($perro->id, ['cantidad' => 2]);
         $combo->componentes()->attach($refresco->id, ['cantidad' => 1]);
 
-        $id = (string) Str::uuid();
-        Orden::forceCreate([
-            'id' => $id,
+        $id = Orden::forceCreate([
             'numero_recibo' => 'ORD-COMBO-1',
             'user_id' => $empleado->id,
             'cliente_nombre' => 'General',
@@ -117,7 +115,7 @@ class ComboProductoTest extends TestCase
             'tasa_cambio' => 1,
             'fecha_hora' => now(),
             'is_local' => false,
-        ]);
+        ])->id;
 
         $this->actingAs($empleado, 'sanctum')
             ->putJson("/api/pos/ordenes/{$id}", [

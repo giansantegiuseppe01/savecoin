@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('descripcion')->nullable();
             $table->decimal('saldo_despues', 12, 4);
             $table->string('referencia')->nullable();
+            $table->foreignId('categoria_id')->nullable()->constrained('categoria_libro_contables')->nullOnDelete();
             $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
             $table->softDeletes();

@@ -11,10 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Instalaciones existentes: la tabla ya está creada con este mismo esquema.
+        if (Schema::hasTable('bitacora_inventarios')) {
+            return;
+        }
+
         Schema::create('bitacora_inventarios', function (Blueprint $table) {
             $table->id();
             $table->foreignId('insumo_id')->constrained()->onDelete('cascade');
-            $table->foreignId('orden_id')->nullable()->constrained()->onDelete('set null');
+            $table->foreignId('orden_id')->nullable()->constrained()->onDelete('cascade');
             $table->enum('tipo_movimiento', ['entrada', 'salida', 'ajuste', 'reembolso']);
             $table->decimal('cantidad_anterior', 12, 4);
             $table->decimal('cantidad_movimiento', 12, 4);

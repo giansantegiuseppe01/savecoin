@@ -11,16 +11,25 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Instalaciones existentes: la tabla ya está creada con este mismo esquema.
+        if (Schema::hasTable('detalle_ordens')) {
+            return;
+        }
+
         Schema::create('detalle_ordens', function (Blueprint $table) {
-            $table->id();
+            $table->string('id')->primary(); // UUID generado por la app / el modelo
             $table->foreignId('orden_id')->constrained()->onDelete('cascade');
             $table->foreignId('producto_id')->constrained()->onDelete('cascade');
+            $table->string('producto_nombre');
             $table->integer('cantidad');
             $table->decimal('precio_unitario', 12, 4);
             $table->decimal('subtotal', 12, 4);
             $table->decimal('descuento', 12, 4)->default(0);
             $table->decimal('total', 12, 4);
             $table->text('notas')->nullable();
+            $table->boolean('fue_modificado')->default(false);
+            $table->timestamp('synced_at')->nullable();
+            $table->boolean('is_local')->default(false);
             $table->timestamps();
         });
     }

@@ -13,8 +13,9 @@ class Orden extends Model
 {
     use HasFactory, SoftDeletes;
 
-    // El id es texto (numérico desde la secuencia o UUID desde la app móvil): sin esto
-    // Eloquent lo convierte a entero y un UUID se corrompe (p. ej. "5097e84d-…" -> 5097).
+    // El id es numérico (identidad de la base de datos) pero se entrega siempre como texto, que es
+    // lo que espera la app móvil. La app guarda sus comandas locales con UUID: ese UUID no existe
+    // en el servidor (ver idValido()).
     protected $keyType = 'string';
 
     private static ?bool $idNumerico = null;

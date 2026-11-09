@@ -71,7 +71,7 @@ class WebSecurityTest extends TestCase
     public function test_refund_is_rejected_for_refund_receipts(): void
     {
         $admin = User::factory()->admin()->create();
-        $orden = $this->crearOrden($admin, ['tipo' => 'reembolso', 'estado' => 'completada']);
+        $orden = $this->crearOrden($admin, ['tipo' => 'reembolso', 'estado' => 'cerrada']);
 
         $this->actingAs($admin)->post("/recibos/{$orden->id}/reembolso")
             ->assertSessionHas('error');
@@ -90,9 +90,8 @@ class WebSecurityTest extends TestCase
 
     private function crearOrden(User $user, array $attrs = []): Orden
     {
-        // "id" no es fillable (en PostgreSQL lo genera la BD); en SQLite hay que fijarlo.
+        // "id" no es fillable: se fija la orden con forceFill y la BD genera el id.
         $orden = (new Orden)->forceFill(array_merge([
-            'id' => 'orden-'.uniqid(),
             'numero_recibo' => 'V'.random_int(10000000, 99999999),
             'user_id' => $user->id,
             'tipo' => 'venta',
