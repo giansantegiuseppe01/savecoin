@@ -98,7 +98,8 @@ class InventarioController extends Controller
                 'nombre' => 'required|string|max:255',
                 'descripcion' => 'nullable|string|max:500',
                 'unidad_medida' => 'required|in:G,Kg,Lt,Unidad',
-                'costo_unitario' => 'required|numeric|min:0',
+                // Un insumo preparado calcula su costo desde la receta; solo los simples lo piden
+                'costo_unitario' => 'required_without:ingredientes|nullable|numeric|min:0',
                 'stock_actual' => 'required|numeric|min:0',
                 'stock_minimo' => 'required|numeric|min:0',
                 'rendimiento' => 'nullable|numeric|gt:0',
@@ -114,7 +115,7 @@ class InventarioController extends Controller
                 'nombre' => $validated['nombre'],
                 'descripcion' => $validated['descripcion'] ?? null,
                 'unidad_medida' => $validated['unidad_medida'],
-                'costo_unitario' => $validated['costo_unitario'],
+                'costo_unitario' => $validated['costo_unitario'] ?? 0,
                 'stock_actual' => $validated['stock_actual'],
                 'stock_minimo' => $validated['stock_minimo'],
                 'activo' => $activo,
@@ -152,7 +153,8 @@ class InventarioController extends Controller
                 'nombre' => 'required|string|max:255',
                 'descripcion' => 'nullable|string|max:500',
                 'unidad_medida' => 'required|in:G,Kg,Lt,Unidad',
-                'costo_unitario' => 'required|numeric|min:0',
+                // Un insumo preparado calcula su costo desde la receta; solo los simples lo piden
+                'costo_unitario' => 'required_without:ingredientes|nullable|numeric|min:0',
                 'stock_minimo' => 'required|numeric|min:0',
                 'rendimiento' => 'nullable|numeric|gt:0',
                 'ingredientes' => 'nullable|array',
@@ -168,7 +170,7 @@ class InventarioController extends Controller
                 'nombre' => $validated['nombre'],
                 'descripcion' => $validated['descripcion'] ?? null,
                 'unidad_medida' => $validated['unidad_medida'],
-                'costo_unitario' => $validated['costo_unitario'],
+                'costo_unitario' => $validated['costo_unitario'] ?? 0,
                 'stock_minimo' => $validated['stock_minimo'],
                 'activo' => $activo,
             ]);

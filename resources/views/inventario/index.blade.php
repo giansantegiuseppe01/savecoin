@@ -186,7 +186,8 @@
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Costo Unitario (USD) *</label>
-                            <input type="number" name="costo_unitario" class="form-control" step="0.0001" min="0" required>
+                            <input type="number" name="costo_unitario" id="crearCostoUnitario" class="form-control" step="0.0001" min="0" required>
+                            <small class="text-muted costo-auto d-none">Se calcula automáticamente de la receta al guardar.</small>
                         </div>
                     </div>
                     <div class="row">
@@ -276,6 +277,7 @@
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Costo Unitario (USD) *</label>
                             <input type="number" name="costo_unitario" id="editarCostoUnitario" class="form-control" step="0.0001" min="0" required>
+                            <small class="text-muted costo-auto d-none">Se calcula automáticamente de la receta al guardar.</small>
                         </div>
                     </div>
                     <div class="row">
@@ -394,6 +396,18 @@ function alternarReceta(prefijo) {
     // Sin el interruptor, no se envía receta (y se borra la que hubiera)
     document.querySelectorAll('#' + prefijo + 'Receta input, #' + prefijo + 'Receta select').forEach(el => el.disabled = !activo);
     if (activo && document.getElementById(prefijo + 'Filas').children.length === 0) agregarIngrediente(prefijo);
+    alternarCosto(prefijo);
+}
+
+// En un insumo preparado el costo lo calcula el sistema (ingredientes / rendimiento): no se edita
+function alternarCosto(prefijo) {
+    const activo = document.getElementById(prefijo + 'EsPreparado').checked;
+    const campo = document.getElementById(prefijo + 'CostoUnitario');
+    const aviso = campo.parentElement.querySelector('.costo-auto');
+    // readonly (no disabled) para que el valor siga viajando en el formulario
+    campo.readOnly = activo;
+    campo.required = !activo;
+    aviso.classList.toggle('d-none', !activo);
 }
 
 function agregarIngrediente(prefijo, insumoId = '', cantidad = '') {
