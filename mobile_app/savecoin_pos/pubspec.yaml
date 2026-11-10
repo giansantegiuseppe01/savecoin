@@ -47,6 +47,7 @@ dependencies:
 
   # POS Printer
   esc_pos_utils: ^1.1.0
+  image: ^3.3.0 # mismo major que usa esc_pos_utils (para imprimir el logo)
 
   # Network
   http: ^1.2.0

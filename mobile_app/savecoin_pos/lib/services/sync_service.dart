@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'api_service.dart';
 import '../models/producto.dart';
@@ -117,6 +119,22 @@ class SyncService {
     }
   }
 
+  /// Descarga el logo de la empresa (PNG) y lo devuelve en base64, o null si falla.
+  Future<String?> _descargarLogo(String ruta) async {
+    try {
+      // La ruta es relativa al servidor (ej. uploads/logos/logo.png): se resuelve contra la URL de la API
+      final servidor = _apiService.baseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+      final url = ruta.startsWith('http') ? ruta : '$servidor/$ruta';
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+        return base64Encode(response.bodyBytes);
+      }
+    } catch (e) {
+      logd('No se pudo descargar el logo: $e');
+    }
+    return null;
+  }
+
   // Sincronizar configuración
   Future<void> syncConfiguracion() async {
     if (!await hasConnection) return;
@@ -128,13 +146,30 @@ class SyncService {
       if (configBox.isNotEmpty) {
         final currentConfig = configBox.getAt(0);
         if (currentConfig != null) {
+          // El logo solo se vuelve a descargar si cambió o aún no lo tenemos
+          String? logoBase64 = currentConfig.logoBase64;
+          if (config.logoUrl == null) {
+            logoBase64 = '';
+          } else if (config.logoUrl != currentConfig.logoUrl || (logoBase64 ?? '').isEmpty) {
+            logoBase64 = await _descargarLogo(config.logoUrl!) ?? logoBase64;
+          }
           final updatedConfig = currentConfig.copyWith(
             tasaCambio: config.tasaCambio,
             lastSyncAt: DateTime.now(),
+            nombreEmpresa: config.nombreEmpresa ?? '',
+            rif: config.rif ?? '',
+            telefono: config.telefono ?? '',
+            direccion: config.direccion ?? '',
+            logoUrl: config.logoUrl ?? '',
+            logoBase64: logoBase64,
+            formasPagoJson: config.formasPagoJson ?? '[]',
           );
           await configBox.putAt(0, updatedConfig);
         }
       } else {
+        if (config.logoUrl != null) {
+          config.logoBase64 = await _descargarLogo(config.logoUrl!);
+        }
         await configBox.add(config);
       }
       logd('Configuración sincronizada correctamente.');

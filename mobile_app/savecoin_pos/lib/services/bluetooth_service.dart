@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:esc_pos_utils/esc_pos_utils.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/configuracion.dart';
 import '../models/orden.dart';
 import '../models/detalle_orden.dart';
 import '../utils/formatters.dart';
@@ -199,8 +203,6 @@ class BluetoothService {
           styles: PosStyles(
             align: PosAlign.center,
             bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
           ));
 
       // Si está modificada, agregar timestamp de modificación
@@ -278,12 +280,11 @@ class BluetoothService {
 
       List<int> bytes = [];
 
+      bytes += _encabezadoEmpresa(generator);
       bytes += generator.text('PRE-CUENTA',
           styles: PosStyles(
             align: PosAlign.center,
             bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
           ));
       bytes += generator.hr();
       bytes += generator.text('Orden: ${orden.numeroRecibo}',
@@ -317,6 +318,7 @@ class BluetoothService {
       bytes += generator.hr();
       bytes += generator.text('Tasa: \$1 = Bs${tasaCambio.toStringAsFixed(2)}',
           styles: PosStyles(align: PosAlign.center));
+      bytes += _formasDePago(generator);
       bytes += generator.feed(2);
       bytes += generator.cut();
 
@@ -348,8 +350,6 @@ class BluetoothService {
           styles: PosStyles(
             align: PosAlign.center,
             bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
           ));
       bytes += generator.hr();
       bytes += generator.text('Orden: ${orden.numeroRecibo}',
@@ -401,8 +401,6 @@ class BluetoothService {
           styles: PosStyles(
             align: PosAlign.center,
             bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
           ));
       bytes += generator.hr();
       bytes += generator.text('Orden: ${orden.numeroRecibo}',
@@ -447,14 +445,7 @@ class BluetoothService {
 
       List<int> bytes = [];
 
-      bytes += generator.text('SAVECOIN POS',
-          styles: PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
-          ));
-      bytes += generator.hr();
+      bytes += _encabezadoEmpresa(generator);
       bytes += generator.text('RECIBO #${orden.numeroRecibo}',
           styles: PosStyles(bold: true));
       bytes += generator.text('Cliente: ${orden.clienteNombre}');
@@ -546,13 +537,7 @@ class BluetoothService {
 
       List<int> bytes = [];
 
-      bytes += generator.text('SAVECOIN POS',
-          styles: PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
-          ));
+      bytes += _encabezadoEmpresa(generator);
       bytes += generator.text('REPORTE DE CIERRE DE TURNO',
           styles: PosStyles(align: PosAlign.center, bold: true));
       bytes += generator.hr();
@@ -623,15 +608,8 @@ class BluetoothService {
 
       List<int> bytes = [];
 
+      bytes += _encabezadoEmpresa(generator);
       bytes += generator.text('** COPIA / REIMPRESIÓN **',
-          styles: PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
-          ));
-      bytes += generator.hr();
-      bytes += generator.text('SAVECOIN POS',
           styles: PosStyles(
             align: PosAlign.center,
             bold: true,
@@ -691,6 +669,64 @@ class BluetoothService {
   }
 
   String _formatDate(DateTime date) => formatFechaHora(date);
+
+  Configuracion? _configEmpresa() {
+    try {
+      final box = Hive.box<Configuracion>('configuracion');
+      return box.isEmpty ? null : box.getAt(0);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Encabezado de los tickets: logo, nombre, RIF y teléfono de la empresa.
+  List<int> _encabezadoEmpresa(Generator generator) {
+    final config = _configEmpresa();
+    List<int> bytes = [];
+    if (config == null) return bytes;
+
+    final logo = config.logoBase64;
+    if (logo != null && logo.isNotEmpty) {
+      try {
+        final decoded = img.decodeImage(base64Decode(logo));
+        if (decoded != null) {
+          // 58 mm = 384 puntos útiles; el logo ocupa ~55 % para no gastar papel
+          final ancho = decoded.width > 200 ? 200 : decoded.width;
+          bytes += generator.image(img.copyResize(decoded, width: ancho), align: PosAlign.center);
+        }
+      } catch (e) {
+        logd('No se pudo imprimir el logo: $e');
+      }
+    }
+
+    final center = PosStyles(align: PosAlign.center);
+    if ((config.nombreEmpresa ?? '').isNotEmpty) {
+      bytes += generator.text(config.nombreEmpresa!, styles: PosStyles(align: PosAlign.center, bold: true));
+    }
+    if ((config.rif ?? '').isNotEmpty) bytes += generator.text('RIF: ${config.rif}', styles: center);
+    if ((config.telefono ?? '').isNotEmpty) bytes += generator.text('Tel: ${config.telefono}', styles: center);
+    bytes += generator.hr();
+    return bytes;
+  }
+
+  /// Datos de pago de la empresa (Pago Móvil, etc.) para que el cliente pague al recibir la cuenta.
+  List<int> _formasDePago(Generator generator) {
+    final formas = _configEmpresa()?.formasPago ?? const [];
+    List<int> bytes = [];
+    if (formas.isEmpty) return bytes;
+
+    bytes += generator.hr();
+    bytes += generator.text('FORMAS DE PAGO',
+        styles: PosStyles(align: PosAlign.center, bold: true));
+    for (final f in formas) {
+      bytes += generator.text(f.nombre, styles: PosStyles(bold: true));
+      for (final linea in f.datos.split('\n')) {
+        if (linea.trim().isNotEmpty) bytes += generator.text(linea.trim());
+      }
+      bytes += generator.emptyLines(1);
+    }
+    return bytes;
+  }
 
   BluetoothPrinter _createPrinter() =>
       BluetoothPrinter(_printCharacteristic!, chunkSize: _chunkSize);

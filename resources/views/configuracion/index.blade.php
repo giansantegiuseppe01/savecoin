@@ -90,6 +90,75 @@
             </div>
         </div>
         
+        <!-- Formas de pago -->
+        <div class="card mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0"><i class="bi bi-credit-card me-2"></i>Formas de Pago</h5>
+                <button type="button" class="btn btn-primary btn-sm" onclick="abrirFormaPago()">
+                    <i class="bi bi-plus-circle me-1"></i>Añadir
+                </button>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">
+                    Los datos de pago activos (Pago Móvil, transferencia, Zelle...) se imprimen al final de la pre-cuenta
+                    para que el cliente los tenga a la mano.
+                </p>
+                @forelse($formasPago as $fp)
+                    <div class="border rounded p-3 mb-2 d-flex justify-content-between align-items-start gap-2 {{ $fp->activo ? '' : 'opacity-50' }}">
+                        <div>
+                            <strong>{{ $fp->nombre }}</strong>
+                            @unless($fp->activo)<span class="badge bg-secondary ms-1">Inactiva</span>@endunless
+                            <div class="small text-muted" style="white-space: pre-line;">{{ $fp->datos }}</div>
+                        </div>
+                        <div class="text-nowrap">
+                            <button type="button" class="btn btn-outline-primary btn-sm"
+                                    data-fp="{{ json_encode(['id' => $fp->id, 'nombre' => $fp->nombre, 'datos' => $fp->datos, 'activo' => $fp->activo]) }}"
+                                    onclick="abrirFormaPago(JSON.parse(this.dataset.fp))">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="eliminarFormaPago({{ $fp->id }})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                @empty
+                    <p class="text-muted mb-0">Aún no has añadido formas de pago.</p>
+                @endforelse
+            </div>
+        </div>
+
+        <div class="modal fade" id="modalFormaPago" tabindex="-1">
+            <div class="modal-dialog modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Forma de pago</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="fpId">
+                        <div class="mb-3">
+                            <label class="form-label">Nombre *</label>
+                            <input type="text" id="fpNombre" class="form-control" maxlength="100" placeholder="Ej: Pago Móvil">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Datos *</label>
+                            <textarea id="fpDatos" class="form-control" rows="5" maxlength="1000"
+                                      placeholder="Banco: Venezuela (0102)&#10;Teléfono: 0412-1234567&#10;Cédula: V-12345678"></textarea>
+                            <small class="text-muted">Cada línea se imprime tal cual en el ticket (máx. ~32 caracteres por línea).</small>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="fpActivo" checked>
+                            <label class="form-check-label" for="fpActivo">Activa (se imprime en la pre-cuenta)</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary" onclick="guardarFormaPago()">Guardar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Vista Previa -->
         <div class="card mt-4">
             <div class="card-header">
@@ -148,6 +217,44 @@
 
 @push('scripts')
 <script>
+const FP_URL = @json(route('configuracion.formas-pago.store'));
+const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || document.querySelector('input[name="_token"]').value;
+
+function abrirFormaPago(fp) {
+    document.getElementById('fpId').value = fp ? fp.id : '';
+    document.getElementById('fpNombre').value = fp ? fp.nombre : '';
+    document.getElementById('fpDatos').value = fp ? fp.datos : '';
+    document.getElementById('fpActivo').checked = fp ? !!fp.activo : true;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modalFormaPago')).show();
+}
+
+function enviarFormaPago(url, method, body) {
+    return fetch(url, {
+        method,
+        headers: {'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json', 'Content-Type': 'application/json'},
+        body: body ? JSON.stringify(body) : undefined,
+    }).then(r => r.json().then(d => ({ok: r.ok, d})));
+}
+
+function guardarFormaPago() {
+    const id = document.getElementById('fpId').value;
+    const body = {
+        nombre: document.getElementById('fpNombre').value.trim(),
+        datos: document.getElementById('fpDatos').value.trim(),
+        activo: document.getElementById('fpActivo').checked,
+    };
+    if (!body.nombre || !body.datos) { alert('Nombre y datos son obligatorios.'); return; }
+    enviarFormaPago(id ? FP_URL + '/' + id : FP_URL, id ? 'PUT' : 'POST', body)
+        .then(({ok, d}) => ok ? location.reload() : alert(d.message || 'No se pudo guardar.'))
+        .catch(e => alert('Error de conexión: ' + e.message));
+}
+
+function eliminarFormaPago(id) {
+    if (!confirm('¿Eliminar esta forma de pago?')) return;
+    enviarFormaPago(FP_URL + '/' + id, 'DELETE')
+        .then(({ok, d}) => ok ? location.reload() : alert(d.message || 'No se pudo eliminar.'));
+}
+
 document.getElementById('formConfiguracion').addEventListener('submit', function(e) {
     e.preventDefault();
     

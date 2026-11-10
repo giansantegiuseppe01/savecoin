@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\TurnoController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WalletController;
 use App\Models\Configuracion;
+use App\Models\FormaPago;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -82,6 +83,13 @@ Route::middleware(['auth:sanctum', 'pos'])->group(function () {
         return response()->json([
             'tasa_cambio' => $config ? $config->tasa_cambio : 7.5,
             'last_sync_at' => now(),
+            'nombre_empresa' => $config?->nombre_empresa,
+            'rif' => $config?->rif,
+            'telefono' => $config?->telefono,
+            'direccion' => $config?->direccion,
+            'logo_url' => $config?->logo ?: null, // ruta relativa: la app la resuelve contra su propio servidor
+            'formas_pago' => FormaPago::where('activo', true)->orderBy('orden')->orderBy('id')
+                ->get(['nombre', 'datos'])->toArray(),
         ]);
     });
 

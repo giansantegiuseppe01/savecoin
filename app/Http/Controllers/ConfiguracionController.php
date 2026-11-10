@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Configuracion;
+use App\Models\FormaPago;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -12,7 +13,9 @@ class ConfiguracionController extends Controller
     {
         $config = Configuracion::getConfig();
 
-        return view('configuracion.index', compact('config'));
+        $formasPago = FormaPago::orderBy('orden')->orderBy('id')->get();
+
+        return view('configuracion.index', compact('config', 'formasPago'));
     }
 
     public function update(Request $request)
@@ -63,5 +66,39 @@ class ConfiguracionController extends Controller
                 'message' => 'Error al actualizar configuración.',
             ], 500);
         }
+    }
+
+    private function validarFormaPago(Request $request): array
+    {
+        return $request->validate([
+            'nombre' => 'required|string|max:100',
+            'datos' => 'required|string|max:1000',
+            'activo' => 'nullable|boolean',
+        ]);
+    }
+
+    public function storeFormaPago(Request $request)
+    {
+        $datos = $this->validarFormaPago($request);
+        $datos['activo'] = $request->boolean('activo', true);
+        $datos['orden'] = (int) FormaPago::max('orden') + 1;
+
+        return response()->json(['success' => true, 'forma_pago' => FormaPago::create($datos)]);
+    }
+
+    public function updateFormaPago(Request $request, FormaPago $formaPago)
+    {
+        $datos = $this->validarFormaPago($request);
+        $datos['activo'] = $request->boolean('activo', true);
+        $formaPago->update($datos);
+
+        return response()->json(['success' => true, 'forma_pago' => $formaPago]);
+    }
+
+    public function destroyFormaPago(FormaPago $formaPago)
+    {
+        $formaPago->delete();
+
+        return response()->json(['success' => true]);
     }
 }

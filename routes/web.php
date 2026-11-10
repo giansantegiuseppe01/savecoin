@@ -139,5 +139,8 @@ Route::middleware(['auth', 'admin'])->group(function () {
     Route::prefix('configuracion')->name('configuracion.')->group(function () {
         Route::get('/', [ConfiguracionController::class, 'index'])->name('index');
         Route::put('/', [ConfiguracionController::class, 'update'])->name('update');
+        Route::post('/formas-pago', [ConfiguracionController::class, 'storeFormaPago'])->name('formas-pago.store');
+        Route::put('/formas-pago/{formaPago}', [ConfiguracionController::class, 'updateFormaPago'])->name('formas-pago.update');
+        Route::delete('/formas-pago/{formaPago}', [ConfiguracionController::class, 'destroyFormaPago'])->name('formas-pago.destroy');
     });
 });
