@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Configuracion;
+use App\Models\AjusteSistema;
 use App\Models\FormaPago;
+use DateTimeZone;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -15,7 +17,10 @@ class ConfiguracionController extends Controller
 
         $formasPago = FormaPago::orderBy('orden')->orderBy('id')->get();
 
-        return view('configuracion.index', compact('config', 'formasPago'));
+        $zonaHoraria = config('app.timezone');
+        $zonas = DateTimeZone::listIdentifiers();
+
+        return view('configuracion.index', compact('config', 'formasPago', 'zonaHoraria', 'zonas'));
     }
 
     public function update(Request $request)
@@ -66,6 +71,23 @@ class ConfiguracionController extends Controller
                 'message' => 'Error al actualizar configuración.',
             ], 500);
         }
+    }
+
+    public function updateZonaHoraria(Request $request)
+    {
+        $validated = $request->validate([
+            'zona_horaria' => 'required|string|in:'.implode(',', DateTimeZone::listIdentifiers()),
+        ]);
+
+        AjusteSistema::guardar('zona_horaria', $validated['zona_horaria']);
+
+        config(['app.timezone' => $validated['zona_horaria']]);
+        date_default_timezone_set($validated['zona_horaria']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Zona horaria actualizada a '.$validated['zona_horaria'].'.',
+        ]);
     }
 
     private function validarFormaPago(Request $request): array

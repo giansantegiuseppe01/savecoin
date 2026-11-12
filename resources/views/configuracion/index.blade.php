@@ -90,6 +90,35 @@
             </div>
         </div>
         
+        <!-- Hora del servidor -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="bi bi-clock me-2"></i>Hora del Servidor</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-6">
+                        <label class="form-label">Zona horaria</label>
+                        <select id="zonaHoraria" class="form-select">
+                            @foreach($zonas as $zona)
+                                <option value="{{ $zona }}" @selected($zona === $zonaHoraria)>{{ $zona }}</option>
+                            @endforeach
+                        </select>
+                        <small class="text-muted">Las ventas, tickets y turnos usan esta zona. Para Venezuela: America/Caracas.</small>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="button" class="btn btn-primary w-100" onclick="guardarZonaHoraria()">
+                            <i class="bi bi-save me-1"></i>Guardar zona
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="small text-muted">Hora actual del servidor</div>
+                        <strong>{{ now()->format('d/m/Y H:i:s') }}</strong> ({{ now()->format('P') }})
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Formas de pago -->
         <div class="card mt-4">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -234,6 +263,18 @@ function enviarFormaPago(url, method, body) {
         headers: {'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json', 'Content-Type': 'application/json'},
         body: body ? JSON.stringify(body) : undefined,
     }).then(r => r.json().then(d => ({ok: r.ok, d})));
+}
+
+function guardarZonaHoraria() {
+    const zona = document.getElementById('zonaHoraria').value;
+    fetch(@json(route('configuracion.zona-horaria.update')), {
+        method: 'PUT',
+        headers: {'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json', 'Content-Type': 'application/json'},
+        body: JSON.stringify({zona_horaria: zona}),
+    })
+    .then(r => r.json().then(d => ({ok: r.ok, d})))
+    .then(({ok, d}) => ok ? location.reload() : alert(d.message || 'No se pudo guardar la zona horaria.'))
+    .catch(e => alert('Error de conexión: ' + e.message));
 }
 
 function guardarFormaPago() {

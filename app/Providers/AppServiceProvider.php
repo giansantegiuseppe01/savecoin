@@ -22,6 +22,18 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Zona horaria del servidor configurada desde el sistema (Configuración > Hora del servidor).
+        // Si no hay ajuste guardado, se usa APP_TIMEZONE del .env.
+        try {
+            $zona = \App\Models\AjusteSistema::obtener('zona_horaria');
+            if ($zona && in_array($zona, \DateTimeZone::listIdentifiers(), true)) {
+                config(['app.timezone' => $zona]);
+                date_default_timezone_set($zona);
+            }
+        } catch (\Throwable $e) {
+            // Sin base de datos disponible (p. ej. antes de migrar): se mantiene APP_TIMEZONE.
+        }
+
         // Límite de intentos de login: 5 por minuto por combinación email + IP
         // (frena ataques de fuerza bruta y de relleno de credenciales).
         RateLimiter::for('login', function (Request $request) {
