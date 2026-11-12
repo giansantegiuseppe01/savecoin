@@ -1,5 +1,6 @@
 import 'package:hive/hive.dart';
 import 'detalle_orden.dart';
+import '../utils/fecha.dart';
 
 part 'orden.g.dart';
 
@@ -175,7 +176,7 @@ class Orden extends HiveObject {
       'estado': estado,
       'metodo_pago': metodoPago,
       'turno': turno,
-      'fecha_hora': fechaHora.toIso8601String(),
+      'fecha_hora': fechaConZona(fechaHora),
       'notas': notas,
       'is_local': isLocal,
       'aplica_iva': aplicaIva,

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use Carbon\Carbon;
 use App\Http\Controllers\Controller;
 use App\Models\Configuracion;
 use App\Models\DetalleOrden;
@@ -249,7 +250,7 @@ class PosController extends Controller
                 $orden->cliente_nombre = $request->input('cliente_nombre');
                 $orden->tipo = $request->input('tipo', 'venta');
                 $orden->tasa_cambio = $request->input('tasa_cambio', 1);
-                $orden->fecha_hora = $request->input('fecha_hora', now());
+                $orden->fecha_hora = Carbon::parse($request->input('fecha_hora', now()))->setTimezone(config('app.timezone'));
                 $orden->is_local = true;
             } else {
                 Log::info('Orden encontrada', ['orden_id' => $orden->id, 'estado' => $orden->estado]);

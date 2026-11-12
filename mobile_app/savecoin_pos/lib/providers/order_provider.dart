@@ -3,6 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/cliente.dart';
+import '../utils/fecha.dart';
 import '../models/detalle_orden.dart';
 import '../models/orden.dart';
 import '../services/api_service.dart';
@@ -655,7 +656,7 @@ class OrderProvider with ChangeNotifier {
       'tipo': o.tipo,
       'cliente_nombre': o.clienteNombre,
       if (int.tryParse(o.clienteId) != null) 'cliente_id': int.parse(o.clienteId),
-      'fecha_hora': o.fechaHora.toIso8601String(),
+      'fecha_hora': fechaConZona(o.fechaHora),
       if (o.notas != null) 'notas': o.notas,
       'detalles': detalles
           .map((d) => {

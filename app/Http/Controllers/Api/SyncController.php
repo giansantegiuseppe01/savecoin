@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use Carbon\Carbon;
 use App\Http\Controllers\Controller;
 use App\Models\Cliente;
 use App\Models\DetalleOrden;
@@ -92,7 +93,7 @@ class SyncController extends Controller
                         'metodo_pago' => $ordenData['metodo_pago'] ?? null,
                         'referencia_pago' => $ordenData['referencia_pago'] ?? null,
                         'turno' => $ordenData['turno'] ?? null,
-                        'fecha_hora' => $ordenData['fecha_hora'],
+                        'fecha_hora' => Carbon::parse($ordenData['fecha_hora'])->setTimezone(config('app.timezone')),
                         'notas' => $ordenData['notas'] ?? null,
                         'synced_at' => now(),
                         'is_local' => false,
@@ -153,7 +154,7 @@ class SyncController extends Controller
                     // Asigna la venta a su turno (antes quedaba sin turno y no entraba en el
                     // cierre ni en el libro contable)
                     if ($ordenData['estado'] === 'cerrada') {
-                        $turno = Turno::paraVentaSincronizada((int) auth()->id(), $ordenData['fecha_hora']);
+                        $turno = Turno::paraVentaSincronizada((int) auth()->id(), Carbon::parse($ordenData['fecha_hora'])->setTimezone(config('app.timezone')));
                         $turno?->incorporarVentaTardia(Orden::whereKey($ordenId)->first(), auth()->id());
                     }
                 }
