@@ -475,8 +475,13 @@ class BluetoothService {
             height: PosTextSize.size2,
           ));
       bytes += generator.hr();
-      bytes += generator.text('Método de Pago: $metodoPago',
+      bytes += generator.text(
+          metodoPago == 'credito' ? 'Método de Pago: CRÉDITO' : 'Método de Pago: $metodoPago',
           styles: PosStyles(align: PosAlign.center));
+      if (metodoPago == 'credito') {
+        bytes += generator.text('*** RECIBO POR PAGAR ***',
+            styles: PosStyles(align: PosAlign.center, bold: true));
+      }
       if (orden.referenciaPago != null && orden.referenciaPago!.isNotEmpty) {
         bytes += generator.text('Referencia: ${orden.referenciaPago}',
             styles: PosStyles(align: PosAlign.center));
@@ -530,6 +535,8 @@ class BluetoothService {
             return 'Tarjeta';
           case 'mixto':
             return 'Mixto';
+          case 'credito':
+            return 'Crédito';
           default:
             return 'Sin método';
         }
@@ -644,8 +651,13 @@ class BluetoothService {
             height: PosTextSize.size2,
           ));
       bytes += generator.hr();
-      bytes += generator.text('Método de Pago: $metodoPago',
+      bytes += generator.text(
+          metodoPago == 'credito' ? 'Método de Pago: CRÉDITO' : 'Método de Pago: $metodoPago',
           styles: PosStyles(align: PosAlign.center));
+      if (metodoPago == 'credito') {
+        bytes += generator.text('*** RECIBO POR PAGAR ***',
+            styles: PosStyles(align: PosAlign.center, bold: true));
+      }
       if (orden.referenciaPago != null && orden.referenciaPago!.isNotEmpty) {
         bytes += generator.text('Referencia: ${orden.referenciaPago}',
             styles: PosStyles(align: PosAlign.center));

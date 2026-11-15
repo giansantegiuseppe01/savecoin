@@ -255,7 +255,11 @@ class CartPanel extends StatelessWidget {
   Future<void> _cobrar(BuildContext context) async {
     final pago = await showDialog<_Pago>(
       context: context,
-      builder: (_) => _PagoDialog(subtotal: subtotal, aplicaIvaInicial: aplicaIva),
+      builder: (_) => _PagoDialog(
+        subtotal: subtotal,
+        aplicaIvaInicial: aplicaIva,
+        tieneCliente: selectedCliente != null,
+      ),
     );
     if (pago == null) return;
     onAplicaIvaChanged(pago.aplicaIva);
@@ -280,8 +284,13 @@ class _Pago {
 class _PagoDialog extends StatefulWidget {
   final double subtotal;
   final bool aplicaIvaInicial;
+  final bool tieneCliente;
 
-  const _PagoDialog({required this.subtotal, required this.aplicaIvaInicial});
+  const _PagoDialog({
+    required this.subtotal,
+    required this.aplicaIvaInicial,
+    required this.tieneCliente,
+  });
 
   @override
   State<_PagoDialog> createState() => _PagoDialogState();
@@ -355,6 +364,22 @@ class _PagoDialogState extends State<_PagoDialog> {
               leading: const Icon(Icons.account_balance),
               title: const Text('Transferencia'),
               onTap: _transferencia,
+            ),
+            ListTile(
+              leading: const Icon(Icons.receipt_long),
+              title: const Text('Crédito (por pagar)'),
+              subtitle: Text(widget.tieneCliente
+                  ? 'Se carga a la cuenta del cliente'
+                  : 'Primero selecciona un cliente'),
+              onTap: () {
+                if (!widget.tieneCliente) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Selecciona un cliente para vender a crédito.'),
+                  ));
+                  return;
+                }
+                Navigator.pop(context, _Pago('credito', _aplicaIva));
+              },
             ),
           ],
         ),

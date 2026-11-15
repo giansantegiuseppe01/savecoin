@@ -94,7 +94,7 @@
 @if($stockAlerts['stock_bajo'] > 0)
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card {{ $stockAlerts['stock_critico'] > 0 ? 'bg-danger' : 'bg-warning' }} text-white">
+        <div class="card bg-white text-dark border border-danger border-2">
             <div class="card-body">
                 <h5 class="card-title">
                     <i class="bi bi-exclamation-triangle me-2"></i>
@@ -103,11 +103,11 @@
                 <p class="card-text mb-2">
                     <strong>{{ $stockAlerts['stock_bajo'] }}</strong> de {{ $stockAlerts['total_insumos'] }} insumos con stock bajo ({{ $stockAlerts['porcentaje_bajo'] }}%)
                     @if($stockAlerts['stock_critico'] > 0)
-                        <span class="badge bg-white text-danger ms-2">{{ $stockAlerts['stock_critico'] }} críticos</span>
+                        <span class="badge bg-danger text-white ms-2">{{ $stockAlerts['stock_critico'] }} críticos</span>
                     @endif
                 </p>
                 <div class="table-responsive">
-                    <table class="table table-dark table-sm mb-0">
+                    <table class="table table-sm mb-0 text-dark">
                         <thead>
                             <tr>
                                 <th>Insumo</th>
@@ -120,7 +120,7 @@
                             @foreach($stockBajoItems->take(5) as $insumo)
                             <tr>
                                 <td>{{ $insumo->nombre }}</td>
-                                <td class="{{ $insumo->stock_actual < ($insumo->stock_minimo * 0.5) ? 'text-danger fw-bold' : '' }}">
+                                <td class="{{ $insumo->stock_actual < 0 ? 'text-danger fw-bold' : 'text-dark' }}">
                                     {{ number_format($insumo->stock_actual, 2) }}
                                 </td>
                                 <td>{{ number_format($insumo->stock_minimo, 2) }}</td>
@@ -137,7 +137,7 @@
                         </tbody>
                     </table>
                 </div>
-                <a href="{{ route('inventario.index') }}" class="btn btn-sm btn-light mt-2">
+                <a href="{{ route('inventario.index') }}" class="btn btn-sm btn-outline-danger mt-2">
                     <i class="bi bi-box-seam me-1"></i>Ver Inventario
                 </a>
             </div>
