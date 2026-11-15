@@ -143,7 +143,9 @@ h1, h2, h3, h4, h5, .h1, .h2, .h3, .h4, .h5 {
 .main-content {
     margin-left: var(--sidebar-w);
     padding: 24px 28px;
-    animation: sc-enter 320ms var(--sc-ease-out) both;
+    /* "backwards" (no "both"): al terminar la animación deja de aplicarse. Con "both" el
+       contenedor se queda como capa de apilamiento y tapa los modales bajo el fondo oscuro. */
+    animation: sc-enter 320ms var(--sc-ease-out) backwards;
 }
 
 @keyframes sc-enter {
