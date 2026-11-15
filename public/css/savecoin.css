@@ -1,0 +1,417 @@
+/* =========================================================
+   SaveCoin POS — tema visual
+   Tokens, menú lateral, tarjetas, tablas, formularios y
+   retroalimentación al tocar/pasar el cursor.
+   ========================================================= */
+
+:root {
+    --sc-bg: #f1f5f9;
+    --sc-surface: #ffffff;
+    --sc-ink: #0f172a;
+    --sc-muted: #64748b;
+    --sc-line: #e2e8f0;
+    --sc-primary: #4f46e5;
+    --sc-primary-hover: #4338ca;
+    --sc-primary-rgb: 79, 70, 229;
+    --sc-accent: #f59e0b;
+    --sc-side-top: #1e293b;
+    --sc-side-bottom: #0f172a;
+    --sc-radius: 14px;
+    --sc-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.06);
+    --sc-shadow-hover: 0 2px 4px rgba(15, 23, 42, 0.08), 0 10px 28px rgba(15, 23, 42, 0.10);
+    /* Curvas de movimiento: salida rápida, sensación de respuesta inmediata */
+    --sc-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --sc-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+    --sidebar-w: 260px;
+}
+
+html, body {
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    background-color: var(--sc-bg);
+    color: var(--sc-ink);
+    font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, .h1, .h2, .h3, .h4, .h5 {
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+/* ---------- Menú lateral ---------- */
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-w);
+    height: 100vh;
+    height: 100dvh;
+    background: linear-gradient(180deg, var(--sc-side-top) 0%, var(--sc-side-bottom) 100%);
+    padding: 20px 0 24px;
+    overflow-y: auto;
+    box-shadow: 4px 0 24px rgba(15, 23, 42, 0.12);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar .brand {
+    color: #fff;
+    font-size: 1.35rem;
+    font-weight: 800;
+    padding: 6px 20px 18px;
+    margin: 0 0 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.sidebar .brand i {
+    color: var(--sc-accent);
+    font-size: 1.5rem;
+}
+
+.sidebar .user-info {
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 0 14px 14px;
+    border-radius: 12px;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.sidebar .user-info small {
+    color: rgba(255, 255, 255, 0.55);
+    word-break: break-all;
+}
+
+.sidebar .nav {
+    padding: 0 10px;
+    gap: 2px;
+}
+.sidebar .nav-link {
+    position: relative;
+    color: rgba(255, 255, 255, 0.72);
+    padding: 11px 14px;
+    border-radius: 10px;
+    margin: 0;
+    font-weight: 500;
+    transition: background-color 180ms var(--sc-ease-out), color 180ms var(--sc-ease-out);
+}
+.sidebar .nav-link i {
+    margin-right: 10px;
+    font-size: 1.1rem;
+    opacity: 0.9;
+}
+.sidebar .nav-link:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+}
+.sidebar .nav-link.active {
+    color: #fff;
+    background: rgba(79, 70, 229, 0.28);
+    font-weight: 600;
+}
+/* Indicador lateral del módulo activo */
+.sidebar .nav-link.active::before {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 9px;
+    bottom: 9px;
+    width: 4px;
+    border-radius: 0 4px 4px 0;
+    background: var(--sc-accent);
+}
+.sidebar .nav-link:active {
+    transform: scale(0.98);
+}
+.sidebar .nav-link:focus-visible,
+.sidebar .btn:focus-visible {
+    outline: 2px solid var(--sc-accent);
+    outline-offset: 2px;
+}
+
+.sidebar hr.border-light {
+    opacity: 0.12;
+    margin: 10px 14px;
+}
+
+/* ---------- Contenido ---------- */
+.main-content {
+    margin-left: var(--sidebar-w);
+    padding: 24px 28px;
+    animation: sc-enter 320ms var(--sc-ease-out) both;
+}
+
+@keyframes sc-enter {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* ---------- Tarjetas ---------- */
+.card {
+    border: 1px solid rgba(15, 23, 42, 0.04);
+    border-radius: var(--sc-radius);
+    background: var(--sc-surface);
+    box-shadow: var(--sc-shadow);
+    transition: box-shadow 220ms var(--sc-ease-out), border-color 220ms var(--sc-ease-out);
+}
+.card-header {
+    background: transparent;
+    border-bottom: 1px solid var(--sc-line);
+    padding: 14px 18px;
+    font-weight: 600;
+    border-radius: var(--sc-radius) var(--sc-radius) 0 0 !important;
+}
+.card-body {
+    padding: 18px;
+}
+/* Solo las tarjetas que son enlaces se elevan al pasar el cursor */
+a.card:hover {
+    box-shadow: var(--sc-shadow-hover);
+}
+
+.kpi-card {
+    padding: 20px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    border: none;
+}
+.kpi-card::before {
+    content: '';
+    position: absolute;
+    top: -40%;
+    right: -30%;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+}
+.kpi-card .kpi-value {
+    font-size: 2rem;
+    font-weight: 800;
+    margin: 8px 0;
+    letter-spacing: -0.02em;
+}
+.kpi-card .kpi-icon {
+    font-size: 2.4rem;
+    opacity: 0.3;
+    position: absolute;
+    top: 16px;
+    right: 16px;
+}
+
+/* ---------- Tablas ---------- */
+.table {
+    --bs-table-bg: transparent;
+    font-size: 0.95rem;
+}
+.table thead th {
+    background: #f8fafc;
+    color: var(--sc-muted);
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--sc-line);
+    white-space: nowrap;
+}
+.table tbody tr {
+    transition: background-color 150ms ease;
+}
+.table tbody tr:hover {
+    background-color: #f8fafc;
+}
+.table > :not(caption) > * > * {
+    padding: 0.75rem 0.9rem;
+    border-bottom-color: var(--sc-line);
+}
+
+/* ---------- Botones ---------- */
+.btn {
+    border-radius: 10px;
+    font-weight: 600;
+    transition: transform 150ms var(--sc-ease-out), background-color 180ms ease, box-shadow 180ms ease, color 180ms ease;
+    touch-action: manipulation;
+}
+.btn:active:not(:disabled) {
+    transform: scale(0.97);
+}
+.btn:disabled,
+.btn.disabled {
+    opacity: 0.55;
+}
+.btn-primary {
+    --bs-btn-bg: var(--sc-primary);
+    --bs-btn-border-color: var(--sc-primary);
+    --bs-btn-hover-bg: var(--sc-primary-hover);
+    --bs-btn-hover-border-color: var(--sc-primary-hover);
+    --bs-btn-active-bg: var(--sc-primary-hover);
+    --bs-btn-active-border-color: var(--sc-primary-hover);
+    --bs-btn-disabled-bg: var(--sc-primary);
+    --bs-btn-disabled-border-color: var(--sc-primary);
+    --bs-btn-focus-shadow-rgb: var(--sc-primary-rgb);
+    box-shadow: 0 2px 8px rgba(var(--sc-primary-rgb), 0.25);
+}
+.btn-primary:hover {
+    box-shadow: 0 4px 14px rgba(var(--sc-primary-rgb), 0.35);
+}
+.btn-action {
+    padding: 6px 10px;
+    border-radius: 8px;
+    transition: transform 150ms var(--sc-ease-out), background-color 180ms ease;
+}
+.btn-action:hover {
+    transform: translateY(-1px);
+}
+.btn-action:active {
+    transform: scale(0.94);
+}
+
+/* ---------- Formularios ---------- */
+.form-control,
+.form-select {
+    border-radius: 10px;
+    border-color: #cbd5e1;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--sc-primary);
+    box-shadow: 0 0 0 4px rgba(var(--sc-primary-rgb), 0.15);
+}
+.form-label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #334155;
+}
+
+/* ---------- Ventanas emergentes ---------- */
+.modal-content {
+    border: none;
+    border-radius: 18px;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+}
+.modal-header {
+    border-bottom: 1px solid var(--sc-line);
+}
+.modal-footer {
+    border-top: 1px solid var(--sc-line);
+}
+.modal.fade .modal-dialog {
+    transition: transform 280ms var(--sc-ease-drawer), opacity 200ms ease;
+}
+
+/* ---------- Insignias y alertas ---------- */
+.badge {
+    border-radius: 999px;
+    font-weight: 600;
+    padding: 0.4em 0.7em;
+}
+.alert {
+    border: none;
+    border-radius: 12px;
+}
+
+/* ---------- Barra superior (móvil y tableta) ---------- */
+.topbar { display: none; }
+.sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 240ms ease, visibility 240ms ease;
+    z-index: 1040;
+}
+.sidebar-overlay.show {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+/* Portátiles y tabletas horizontales */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+    :root { --sidebar-w: 230px; }
+    .main-content { padding: 18px; }
+    .kpi-card .kpi-value { font-size: 1.6rem; }
+}
+
+/* Tabletas verticales y teléfonos: el menú es un panel deslizable */
+@media (max-width: 991.98px) {
+    .topbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        position: sticky;
+        top: 0;
+        z-index: 1020;
+        background: var(--sc-side-top);
+        color: #fff;
+        padding: 10px 14px;
+        border-radius: 14px;
+        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+    }
+    .topbar .btn {
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.35);
+        min-width: 44px;
+        min-height: 44px;
+    }
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 320ms var(--sc-ease-drawer);
+        width: 280px;
+        max-width: 85vw;
+        z-index: 1050;
+    }
+    .sidebar.show { transform: translateX(0); }
+    .main-content { margin-left: 0; padding: 12px; }
+    .kpi-card .kpi-value { font-size: 1.5rem; }
+    h1, .h1 { font-size: 1.6rem; }
+    h2, .h2 { font-size: 1.4rem; }
+    /* Tablas anchas se desplazan en lugar de romper la página */
+    .main-content .card-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .modal-dialog { margin: 0.5rem; }
+}
+
+@media (max-width: 575.98px) {
+    .main-content { padding: 8px; }
+    .btn-group, .d-flex.gap-2 { flex-wrap: wrap; }
+}
+
+/* Dispositivos táctiles: botones y enlaces con área de toque cómoda */
+@media (pointer: coarse) {
+    .sidebar .nav-link { padding: 13px 14px; }
+    .btn { min-height: 44px; }
+    .btn-sm { min-height: 38px; }
+    .form-control, .form-select { min-height: 44px; font-size: 16px; }
+    .btn-action { min-width: 40px; min-height: 40px; }
+}
+
+/* Formularios en ventanas emergentes con teclado en pantalla */
+.modal-dialog { max-height: calc(100vh - 1rem); }
+.modal-content { max-height: calc(100vh - 1rem); }
+.modal-body { overflow-y: auto; }
+.modal-content > form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    max-height: calc(100vh - 1rem);
+    overflow: hidden;
+}
+
+/* Respeta a quien desactiva las animaciones en su sistema */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+        scroll-behavior: auto !important;
+    }
+}
