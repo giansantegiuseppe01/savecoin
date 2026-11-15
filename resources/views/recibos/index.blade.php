@@ -74,16 +74,16 @@
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table table-striped table-hover">
+                    <table data-orden-servidor class="table table-striped table-hover">
                         <thead class="table-dark">
                             <tr>
-                                <th>Nº Recibo</th>
-                                <th>Fecha/Hora</th>
+                                <th data-orden="numero">Nº Recibo</th>
+                                <th data-orden="fecha">Fecha/Hora</th>
                                 <th>Empleado</th>
                                 <th>Cliente</th>
                                 <th>Tipo</th>
-                                <th>Estado</th>
-                                <th class="text-end">Total</th>
+                                <th data-orden="estado">Estado</th>
+                                <th class="text-end" data-orden="total">Total</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
                         </thead>

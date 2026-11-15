@@ -69,16 +69,16 @@
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle">
+                    <table data-orden-servidor class="table table-hover align-middle">
                         <thead>
                             <tr>
-                                <th>Código</th>
-                                <th>Nombre</th>
+                                <th data-orden="codigo">Código</th>
+                                <th data-orden="nombre">Nombre</th>
                                 <th>Categoría</th>
-                                <th class="text-end">Precio Venta</th>
+                                <th class="text-end" data-orden="precio">Precio Venta</th>
                                 <th class="text-end">Costo Producción</th>
                                 <th>Tipo</th>
-                                <th>Estado</th>
+                                <th data-orden="estado">Estado</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
                         </thead>

@@ -33,7 +33,12 @@ class ProductoController extends Controller
             $query->where('activo', false);
         }
 
-        $productos = $query->with(['insumos', 'componentes'])->orderBy('nombre')->paginate(20);
+        $productos = $this->ordenar($query->with(['insumos', 'componentes']), $request, [
+            'codigo' => 'codigo',
+            'nombre' => \Illuminate\Support\Facades\DB::raw('LOWER(nombre)'),
+            'precio' => 'precio_venta',
+            'estado' => 'activo',
+        ], [[DB::raw('LOWER(nombre)'), 'asc']])->paginate(20);
 
         // KPIs
         $totalProductos = Producto::count();

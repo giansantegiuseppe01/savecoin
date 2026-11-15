@@ -121,7 +121,15 @@ class ClienteController extends Controller
         // 2. Si es navegación convencional desde la Web de Laravel
         $clientes = $query
             ->with(['ordens' => fn ($q) => $abiertas($q)->orderBy('fecha_hora')])
-            ->when($request->boolean('con_deuda'), fn ($q) => $q->orderByDesc('deuda_sum'), fn ($q) => $q->orderBy('created_at', 'desc'))
+            ->tap(fn ($q) => $this->ordenar($q, $request, [
+                'nombre' => \Illuminate\Support\Facades\DB::raw('LOWER(nombre)'),
+                'cedula' => 'cedula',
+                'telefono' => 'telefono',
+                'correo' => \Illuminate\Support\Facades\DB::raw('LOWER(correo)'),
+                'ordenes' => 'ordenes_total',
+                'pagado' => 'pagado_sum',
+                'debe' => 'deuda_sum',
+            ], $request->boolean('con_deuda') ? [['deuda_sum', 'desc']] : [['created_at', 'desc']]))
             ->paginate(15)
             ->withQueryString();
 

@@ -40,11 +40,14 @@ class CuentaPorPagarController extends Controller
             default => null,
         };
 
-        $cuentas = (clone $query)
-            ->with('pagos')
-            ->orderByRaw("CASE WHEN estado = 'pendiente' THEN 0 ELSE 1 END")
-            ->orderBy('fecha_vencimiento')
-            ->orderByDesc('id')
+        $cuentas = $this->ordenar((clone $query)->with('pagos'), $request, [
+            'acreedor' => DB::raw('LOWER(acreedor)'),
+            'tipo' => 'tipo',
+            'monto' => 'monto',
+            'saldo' => 'saldo',
+            'vence' => 'fecha_vencimiento',
+            'estado' => 'estado',
+        ], [[DB::raw("CASE WHEN estado = 'pendiente' THEN 0 ELSE 1 END"), 'asc'], ['fecha_vencimiento', 'asc'], ['id', 'desc']])
             ->paginate(20)
             ->withQueryString();
 

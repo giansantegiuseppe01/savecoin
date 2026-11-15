@@ -76,16 +76,16 @@
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle">
+                    <table data-orden-servidor class="table table-hover align-middle">
                         <thead>
                             <tr>
-                                <th>Código</th>
-                                <th>Nombre</th>
-                                <th>Unidad</th>
-                                <th class="text-end">Stock Actual</th>
-                                <th class="text-end">Stock Mínimo</th>
-                                <th class="text-end">Costo Unitario</th>
-                                <th>Estado</th>
+                                <th data-orden="codigo">Código</th>
+                                <th data-orden="nombre">Nombre</th>
+                                <th data-orden="unidad">Unidad</th>
+                                <th class="text-end" data-orden="stock">Stock Actual</th>
+                                <th class="text-end" data-orden="minimo">Stock Mínimo</th>
+                                <th class="text-end" data-orden="costo">Costo Unitario</th>
+                                <th data-orden="estado">Estado</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
                         </thead>

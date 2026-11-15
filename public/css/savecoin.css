@@ -153,6 +153,21 @@ h1, h2, h3, h4, h5, .h1, .h2, .h3, .h4, .h5 {
     to   { opacity: 1; transform: none; }
 }
 
+/* Cabeceras ordenables */
+.sc-sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.sc-sortable::after {
+    content: '\2195';
+    opacity: 0.35;
+    margin-left: 0.35rem;
+    font-size: 0.75em;
+}
+.sc-sortable.sc-asc::after { content: '\25B2'; opacity: 1; }
+.sc-sortable.sc-desc::after { content: '\25BC'; opacity: 1; }
+
 /* Recarga por filtro en vivo: sin animación de entrada para no parpadear */
 .sc-recargando .main-content { animation: none; }
 

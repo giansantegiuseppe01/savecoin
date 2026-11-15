@@ -79,16 +79,16 @@
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle">
+                    <table data-orden-servidor class="table table-hover align-middle">
                         <thead>
                             <tr>
-                                <th>Nombre Completo</th>
-                                <th>Cédula</th>
-                                <th>Teléfono</th>
-                                <th>Correo</th>
-                                <th class="text-end">Órdenes</th>
-                                <th class="text-end">Pagado (USD)</th>
-                                <th class="text-end">Debe (USD)</th>
+                                <th data-orden="nombre">Nombre Completo</th>
+                                <th data-orden="cedula">Cédula</th>
+                                <th data-orden="telefono">Teléfono</th>
+                                <th data-orden="correo">Correo</th>
+                                <th class="text-end" data-orden="ordenes">Órdenes</th>
+                                <th class="text-end" data-orden="pagado">Pagado (USD)</th>
+                                <th class="text-end" data-orden="debe">Debe (USD)</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
                         </thead>

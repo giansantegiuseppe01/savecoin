@@ -212,6 +212,76 @@
         })();
     </script>
 
+    <script>
+        // Orden por columna. Tablas con data-orden-servidor se ordenan en el servidor (todas las páginas);
+        // las demás ordenan las filas que se ven en pantalla.
+        (function () {
+            const params = new URLSearchParams(location.search);
+            const ordenActual = params.get('orden');
+            const dirActual = (params.get('dir') || '').toLowerCase();
+
+            document.querySelectorAll('table[data-orden-servidor]').forEach((tabla) => {
+                tabla.querySelectorAll('thead th[data-orden]').forEach((th) => {
+                    const clave = th.dataset.orden;
+                    th.classList.add('sc-sortable');
+                    th.title = 'Ordenar por esta columna';
+                    if (clave === ordenActual) th.classList.add(dirActual === 'asc' ? 'sc-asc' : 'sc-desc');
+                    th.addEventListener('click', () => {
+                        const url = new URL(location.href);
+                        const dir = (clave === ordenActual && dirActual === 'asc') ? 'desc' : 'asc';
+                        url.searchParams.set('orden', clave);
+                        url.searchParams.set('dir', dir);
+                        url.searchParams.delete('page');
+                        location.href = url.toString();
+                    });
+                });
+            });
+
+            const valorCelda = (texto) => {
+                const t = texto.trim();
+                const fecha = t.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+                if (fecha) return { n: Number(fecha[3] + fecha[2] + fecha[1]) };
+                const limpio = t.replace(/[$\s]/g, '').replace(/,/g, '');
+                if (/^-?\d+(\.\d+)?$/.test(limpio)) return { n: parseFloat(limpio) };
+                return { s: t.toLowerCase() };
+            };
+
+            const ordenarFilas = (tabla, idx, dir) => {
+                const tbody = tabla.tBodies[0];
+                if (!tbody) return;
+                const filas = Array.from(tbody.rows);
+                const datos = filas.filter((f) => f.cells.length > 1 && !f.querySelector('td[colspan]'));
+                const resto = filas.filter((f) => !datos.includes(f));
+                datos.sort((a, b) => {
+                    const va = valorCelda(a.cells[idx] ? a.cells[idx].textContent : '');
+                    const vb = valorCelda(b.cells[idx] ? b.cells[idx].textContent : '');
+                    const r = (va.n !== undefined && vb.n !== undefined)
+                        ? va.n - vb.n
+                        : (va.s ?? String(va.n)).localeCompare(vb.s ?? String(vb.n), 'es', { numeric: true });
+                    return dir === 'asc' ? r : -r;
+                });
+                [...datos, ...resto].forEach((f) => tbody.appendChild(f));
+            };
+
+            document.querySelectorAll('table:not([data-orden-servidor]):not([data-no-sort])').forEach((tabla) => {
+                const ths = Array.from(tabla.querySelectorAll('thead th'));
+                ths.forEach((th, idx) => {
+                    const texto = th.textContent.trim();
+                    if (!texto || /acciones/i.test(texto)) return;
+                    th.classList.add('sc-sortable');
+                    th.title = 'Ordenar por esta columna';
+                    th.addEventListener('click', () => {
+                        const dir = th.dataset.dir === 'asc' ? 'desc' : 'asc';
+                        ths.forEach((o) => { delete o.dataset.dir; o.classList.remove('sc-asc', 'sc-desc'); });
+                        th.dataset.dir = dir;
+                        th.classList.add(dir === 'asc' ? 'sc-asc' : 'sc-desc');
+                        ordenarFilas(tabla, idx, dir);
+                    });
+                });
+            });
+        })();
+    </script>
+
     @stack('scripts')
 </body>
 </html>

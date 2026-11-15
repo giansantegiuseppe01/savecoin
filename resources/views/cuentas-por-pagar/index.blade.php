@@ -105,16 +105,16 @@
                 </form>
 
                 <div class="table-responsive">
-                    <table class="table table-sm align-middle">
+                    <table data-orden-servidor class="table table-sm align-middle">
                         <thead>
                             <tr>
-                                <th>Acreedor</th>
-                                <th>Tipo</th>
+                                <th data-orden="acreedor">Acreedor</th>
+                                <th data-orden="tipo">Tipo</th>
                                 <th>Concepto / Doc.</th>
-                                <th>Vence</th>
-                                <th class="text-end">Monto</th>
-                                <th class="text-end">Saldo</th>
-                                <th>Estado</th>
+                                <th data-orden="vence">Vence</th>
+                                <th class="text-end" data-orden="monto">Monto</th>
+                                <th class="text-end" data-orden="saldo">Saldo</th>
+                                <th data-orden="estado">Estado</th>
                                 <th></th>
                             </tr>
                         </thead>

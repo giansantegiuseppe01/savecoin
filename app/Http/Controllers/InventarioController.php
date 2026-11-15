@@ -31,7 +31,15 @@ class InventarioController extends Controller
             $query->where('activo', false);
         }
 
-        $insumos = $query->with('ingredientes')->orderBy('nombre')->paginate(20);
+        $insumos = $this->ordenar($query->with('ingredientes'), $request, [
+            'codigo' => 'codigo',
+            'nombre' => \Illuminate\Support\Facades\DB::raw('LOWER(nombre)'),
+            'unidad' => \Illuminate\Support\Facades\DB::raw('LOWER(unidad_medida)'),
+            'stock' => 'stock_actual',
+            'minimo' => 'stock_minimo',
+            'costo' => 'costo_unitario',
+            'estado' => 'activo',
+        ], [[DB::raw('LOWER(nombre)'), 'asc']])->paginate(20);
 
         // Guardar filtros para PDF
         $filtros = [

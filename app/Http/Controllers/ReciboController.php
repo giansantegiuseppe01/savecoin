@@ -28,7 +28,13 @@ class ReciboController extends Controller
             $query->where('estado', $request->input('estado'));
         }
 
-        $ordens = $query->orderBy('fecha_hora', 'desc')->paginate(20);
+        $ordens = $this->ordenar($query, $request, [
+            'numero' => 'numero_recibo',
+            'fecha' => 'fecha_hora',
+            'total' => 'total',
+            'estado' => 'estado',
+            'tipo' => 'tipo',
+        ], [['fecha_hora', 'desc']])->paginate(20);
 
         // Guardar filtros para PDF
         $filtros = [

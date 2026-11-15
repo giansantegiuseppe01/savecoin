@@ -28,7 +28,14 @@ class LibroContableController extends Controller
             $query->where('tipo_movimiento', $request->input('tipo_movimiento'));
         }
 
-        $movimientos = $query->orderBy('fecha', 'desc')->orderBy('created_at', 'desc')->orderByDesc('id')->paginate(30);
+        $movimientos = $this->ordenar($query, $request, [
+            'fecha' => 'fecha',
+            'tipo' => 'tipo_movimiento',
+            'descripcion' => \Illuminate\Support\Facades\DB::raw('LOWER(descripcion)'),
+            'referencia' => \Illuminate\Support\Facades\DB::raw('LOWER(referencia)'),
+            'monto' => 'monto',
+            'saldo' => 'saldo_despues',
+        ], [['fecha', 'desc'], ['created_at', 'desc'], ['id', 'desc']])->paginate(30);
 
         // Guardar filtros para PDF
         $filtros = [

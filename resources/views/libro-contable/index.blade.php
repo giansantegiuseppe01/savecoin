@@ -95,16 +95,16 @@
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle">
+                    <table data-orden-servidor class="table table-hover align-middle">
                         <thead>
                             <tr>
-                                <th>Fecha</th>
-                                <th>Tipo</th>
+                                <th data-orden="fecha">Fecha</th>
+                                <th data-orden="tipo">Tipo</th>
                                 <th>Categoría</th>
-                                <th>Descripción</th>
-                                <th>Referencia</th>
-                                <th class="text-end">Monto</th>
-                                <th class="text-end">Saldo Después</th>
+                                <th data-orden="descripcion">Descripción</th>
+                                <th data-orden="referencia">Referencia</th>
+                                <th class="text-end" data-orden="monto">Monto</th>
+                                <th class="text-end" data-orden="saldo">Saldo Después</th>
                                 <th>Usuario</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
