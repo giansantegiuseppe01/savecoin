@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -22,6 +23,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // El sistema usa Bootstrap: la paginación de las tablas se dibuja con sus clases.
+        Paginator::useBootstrapFive();
+
         // Zona horaria del servidor configurada desde el sistema (Configuración > Hora del servidor).
         // Si no hay ajuste guardado, se usa APP_TIMEZONE del .env.
         try {
