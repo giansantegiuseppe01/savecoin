@@ -92,6 +92,12 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link {{ request()->routeIs('cuentas-por-pagar.*') ? 'active' : '' }}"
+                   href="{{ route('cuentas-por-pagar.index') }}">
+                    <i class="bi bi-receipt"></i> Cuentas por Pagar
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link {{ request()->routeIs('inventario.bitacora') ? 'active' : '' }}"
                    href="{{ route('inventario.bitacora') }}">
                     <i class="bi bi-journal-text"></i> Bitácora

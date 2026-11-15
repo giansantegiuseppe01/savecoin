@@ -6,6 +6,7 @@ use App\Http\Controllers\ConfiguracionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ReporteVentasController;
 use App\Http\Controllers\InventarioController;
+use App\Http\Controllers\CuentaPorPagarController;
 use App\Http\Controllers\LibroContableController;
 use App\Http\Controllers\ProductoController;
 use App\Http\Controllers\ReciboController;
@@ -119,6 +120,15 @@ Route::middleware(['auth', 'admin'])->group(function () {
     // API routes for productos
     Route::get('/api/productos/insumos', [ProductoController::class, 'getInsumos']);
     Route::get('/api/productos/disponibles', [ProductoController::class, 'getProductosDisponibles']);
+
+    // Cuentas por pagar (facturas y préstamos a proveedores o acreedores)
+    Route::prefix('cuentas-por-pagar')->name('cuentas-por-pagar.')->group(function () {
+        Route::get('/', [CuentaPorPagarController::class, 'index'])->name('index');
+        Route::post('/', [CuentaPorPagarController::class, 'store'])->name('store');
+        Route::put('/{cuenta}', [CuentaPorPagarController::class, 'update'])->name('update');
+        Route::delete('/{cuenta}', [CuentaPorPagarController::class, 'destroy'])->name('destroy');
+        Route::post('/{cuenta}/pagos', [CuentaPorPagarController::class, 'pagar'])->name('pagar');
+    });
 
     // Libro Contable routes
     Route::prefix('libro-contable')->name('libro-contable.')->group(function () {
