@@ -21,6 +21,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Tema SaveCoin -->
     <link rel="stylesheet" href="{{ asset('css/savecoin.css') }}?v={{ @filemtime(public_path('css/savecoin.css')) }}">
+    <script>
+        // Si la página se recarga por un filtro en vivo, no repetir la animación de entrada
+        if (sessionStorage.getItem('sc-filtro-foco')) document.documentElement.classList.add('sc-recargando');
+    </script>
     
     @stack('styles')
 </head>
@@ -141,6 +145,64 @@
             document.getElementById('btnMenu').addEventListener('click', () => alternar(!sidebar.classList.contains('show')));
             overlay.addEventListener('click', () => alternar(false));
             sidebar.querySelectorAll('a').forEach(a => a.addEventListener('click', () => alternar(false)));
+        })();
+    </script>
+
+    <script>
+        // Filtros en vivo: las tablas filtran al cambiar un select o una fecha,
+        // y al escribir en un buscador (con una pausa corta para no recargar en cada tecla).
+        (function () {
+            const KEY = 'sc-filtro-foco';
+            const esFiltro = (el) => el.form
+                && el.form.method.toLowerCase() === 'get'
+                && el.form.closest('.main-content')
+                && !el.closest('[data-no-live]')
+                && el.name
+                && !['submit', 'button', 'hidden'].includes(el.type);
+
+            // Devuelve el foco y el cursor al campo de texto que se estaba escribiendo
+            try {
+                const guardado = sessionStorage.getItem(KEY);
+                sessionStorage.removeItem(KEY);
+                if (guardado) {
+                    const { name, pos } = JSON.parse(guardado);
+                    const el = document.querySelector('.main-content form[method="get" i] [name="' + CSS.escape(name) + '"]');
+                    if (el) {
+                        el.focus();
+                        if (typeof pos === 'number' && el.setSelectionRange) el.setSelectionRange(pos, pos);
+                    }
+                }
+            } catch (e) { /* sin sessionStorage: se mantiene el comportamiento normal */ }
+
+            const enviar = (el, conFoco) => {
+                try {
+                    if (conFoco) {
+                        sessionStorage.setItem(KEY, JSON.stringify({ name: el.name, pos: el.selectionStart }));
+                    } else {
+                        sessionStorage.removeItem(KEY);
+                    }
+                } catch (e) { /* ignorar */ }
+                el.form.requestSubmit();
+            };
+
+            const timers = new WeakMap();
+
+            document.addEventListener('input', (e) => {
+                const el = e.target;
+                if (!esFiltro(el) || !['text', 'search'].includes(el.type)) return;
+                clearTimeout(timers.get(el));
+                timers.set(el, setTimeout(() => {
+                    if (el.value === el.defaultValue) return; // no cambió respecto a lo mostrado
+                    enviar(el, true);
+                }, 350));
+            });
+
+            document.addEventListener('change', (e) => {
+                const el = e.target;
+                if (!esFiltro(el) || ['text', 'search'].includes(el.type)) return;
+                if (el.value === el.defaultValue && el.type !== 'checkbox') return;
+                enviar(el, false);
+            });
         })();
     </script>
 
