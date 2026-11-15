@@ -44,7 +44,7 @@ class InventarioController extends Controller
         $stockBajo = Insumo::whereColumn('stock_actual', '<', 'stock_minimo')->count();
         $insumosActivos = Insumo::where('activo', true)->count();
 
-        $todosInsumos = Insumo::orderBy('nombre')->get(['id', 'nombre', 'unidad_medida']);
+        $todosInsumos = Insumo::orderBy('nombre')->get(['id', 'nombre', 'unidad_medida', 'stock_actual', 'activo']);
 
         return view('inventario.index', compact(
             'todosInsumos',

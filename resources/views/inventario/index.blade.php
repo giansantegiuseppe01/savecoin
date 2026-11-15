@@ -357,8 +357,8 @@
                         <label class="form-label">Insumo *</label>
                         <select name="insumo_id" class="form-select" required>
                             <option value="">Seleccionar insumo...</option>
-                            @foreach($insumos as $insumo)
-                            <option value="{{ $insumo->id }}">{{ $insumo->nombre }} (Stock: {{ number_format($insumo->stock_actual, 0) }} {{ $insumo->unidad_medida }})</option>
+                            @foreach($todosInsumos as $insumo)
+                            <option value="{{ $insumo->id }}">{{ $insumo->nombre }} (Stock: {{ number_format($insumo->stock_actual, 0) }} {{ $insumo->unidad_medida }}){{ $insumo->activo ? '' : ' - inactivo' }}</option>
                             @endforeach
                         </select>
                     </div>
