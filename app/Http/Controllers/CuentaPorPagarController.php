@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CategoriaLibroContable;
+use App\Models\Configuracion;
 use App\Models\CuentaPorPagar;
 use App\Models\PagoPorPagar;
+use App\Services\LibroContableService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -138,8 +141,21 @@ class CuentaPorPagarController extends Controller
                     $cuenta->estado = 'pagada';
                 }
                 $cuenta->save();
+
+                // Todo pago a proveedores o acreedores sale del libro contable como salida (en Bs)
+                app(LibroContableService::class)->registrar([
+                    'fecha' => $validated['fecha'],
+                    'tipo_movimiento' => 'salida',
+                    'monto' => round((float) $validated['monto'] * (float) Configuracion::getTasaCambio(), 4),
+                    'descripcion' => mb_substr('Pago a '.$cuenta->acreedor
+                        .($cuenta->concepto ? ' · '.$cuenta->concepto : '')
+                        .($cuenta->numero_documento ? ' (Doc. '.$cuenta->numero_documento.')' : '')
+                        .' · USD '.number_format((float) $validated['monto'], 2), 0, 500),
+                    'referencia' => 'cxp_'.$cuenta->id.'_'.$validated['forma_pago'].(! empty($validated['referencia']) ? '_'.$validated['referencia'] : ''),
+                    'categoria_id' => CategoriaLibroContable::firstOrCreate(['nombre' => 'Pagos a proveedores'])->id,
+                ], Auth::id());
             });
-        } catch (\RuntimeException $e) {
+        } catch (\RuntimeException|\DomainException $e) {
             return back()->withErrors(['pago' => $e->getMessage()]);
         }
 
