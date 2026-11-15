@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Cliente;
 use App\Models\DetalleOrden;
 use App\Models\Orden;
+use App\Models\VentaCredito;
 use App\Models\Producto;
 use App\Models\Turno;
 use App\Services\InventarioService;
@@ -34,7 +35,7 @@ class SyncController extends Controller
                 'ordenes.*.tasa_cambio' => 'required|numeric',
                 'ordenes.*.aplica_iva' => 'required|boolean',
                 'ordenes.*.estado' => 'required|in:abierta,cerrada,anulada',
-                'ordenes.*.metodo_pago' => 'nullable|in:efectivo,tarjeta,transferencia,mixto',
+                'ordenes.*.metodo_pago' => 'nullable|in:efectivo,tarjeta,transferencia,mixto,credito',
                 'ordenes.*.referencia_pago' => 'nullable|string|max:100',
                 'ordenes.*.fecha_hora' => 'required|date',
                 'ordenes.*.detalles' => 'required|array',
@@ -90,7 +91,8 @@ class SyncController extends Controller
                         'costo_insumos' => 0,
                         'beneficio_bruto' => $ordenData['total'] - $ordenData['subtotal'],
                         'estado' => $ordenData['estado'],
-                        'metodo_pago' => $ordenData['metodo_pago'] ?? null,
+                        // El crédito no es un método de pago: la deuda se guarda en ventas_credito
+                        'metodo_pago' => ($ordenData['metodo_pago'] ?? null) === 'credito' ? null : ($ordenData['metodo_pago'] ?? null),
                         'referencia_pago' => $ordenData['referencia_pago'] ?? null,
                         'turno' => $ordenData['turno'] ?? null,
                         'fecha_hora' => Carbon::parse($ordenData['fecha_hora'])->setTimezone(config('app.timezone')),
@@ -149,6 +151,11 @@ class SyncController extends Controller
                             'costo_insumos' => $costo,
                             'beneficio_bruto' => (float) $ordenData['total'] - $costo,
                         ]);
+                    }
+
+                    // Venta a crédito: queda registrada como deuda del cliente
+                    if (($ordenData['metodo_pago'] ?? null) === 'credito' && $ordenData['estado'] === 'cerrada') {
+                        VentaCredito::registrarDesde(Orden::whereKey($ordenId)->first());
                     }
 
                     // Asigna la venta a su turno (antes quedaba sin turno y no entraba en el

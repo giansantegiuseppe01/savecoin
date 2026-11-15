@@ -78,8 +78,8 @@ class Turno extends Model
     {
         $this->estado = 'cerrado';
         $this->hora_cierre = now();
-        $this->total_ventas = $this->ordens()->where('estado', 'cerrada')->sum('total');
-        $this->numero_ordenes = $this->ordens()->where('estado', 'cerrada')->count();
+        $this->total_ventas = $this->ordens()->where('estado', 'cerrada')->sinCredito()->sum('total');
+        $this->numero_ordenes = $this->ordens()->where('estado', 'cerrada')->sinCredito()->count();
         $this->save();
     }
 
@@ -91,7 +91,7 @@ class Turno extends Model
     {
         $tasaActual = (float) Configuracion::getTasaCambio();
 
-        return round($this->ordens()->where('estado', 'cerrada')->get()->sum(function ($orden) use ($tasaActual) {
+        return round($this->ordens()->where('estado', 'cerrada')->sinCredito()->get()->sum(function ($orden) use ($tasaActual) {
             $tasa = (float) $orden->tasa_cambio > 0 ? (float) $orden->tasa_cambio : $tasaActual;
 
             return (float) $orden->total * $tasa;
@@ -110,7 +110,7 @@ class Turno extends Model
         $totalBs = 0.0;
         $cantidad = 0;
 
-        foreach ($this->ordens()->where('estado', 'cerrada')->get() as $orden) {
+        foreach ($this->ordens()->where('estado', 'cerrada')->sinCredito()->get() as $orden) {
             $tasa = (float) $orden->tasa_cambio > 0 ? (float) $orden->tasa_cambio : $tasaActual;
             $usd = (float) $orden->total;
             $metodo = $orden->metodo_pago ?: 'sin_metodo';
@@ -123,6 +123,20 @@ class Turno extends Model
             $totalUsd += $usd;
             $totalBs += $usd * $tasa;
             $cantidad++;
+        }
+
+        // Cobros de deudas a crédito hechos durante este turno: entran a caja con su forma de pago
+        foreach (AbonoCredito::where('turno_id', $this->id)->get() as $abono) {
+            $tasa = (float) $abono->tasa_cambio > 0 ? (float) $abono->tasa_cambio : $tasaActual;
+            $usd = (float) $abono->monto;
+            $metodo = $abono->forma_pago ?: 'sin_metodo';
+
+            $metodos[$metodo] ??= ['metodo' => $metodo, 'ordenes' => 0, 'total_usd' => 0.0, 'total_bs' => 0.0];
+            $metodos[$metodo]['total_usd'] += $usd;
+            $metodos[$metodo]['total_bs'] += $usd * $tasa;
+
+            $totalUsd += $usd;
+            $totalBs += $usd * $tasa;
         }
 
         return [
@@ -173,8 +187,8 @@ class Turno extends Model
             return;
         }
 
-        $this->total_ventas = $this->ordens()->where('estado', 'cerrada')->sum('total');
-        $this->numero_ordenes = $this->ordens()->where('estado', 'cerrada')->count();
+        $this->total_ventas = $this->ordens()->where('estado', 'cerrada')->sinCredito()->sum('total');
+        $this->numero_ordenes = $this->ordens()->where('estado', 'cerrada')->sinCredito()->count();
         $this->save();
 
         $tasa = (float) $orden->tasa_cambio > 0 ? (float) $orden->tasa_cambio : (float) Configuracion::getTasaCambio();

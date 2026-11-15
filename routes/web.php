@@ -87,6 +87,7 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
     // Clients routes
     Route::prefix('clientes')->name('clientes.')->group(function () {
+        Route::post('/{cliente}/abonos', [ClienteController::class, 'abonar'])->name('abonos.store');
         Route::get('/', [ClienteController::class, 'index'])->name('index');
         Route::post('/', [ClienteController::class, 'store'])->name('store');
         Route::put('/{id}', [ClienteController::class, 'update'])->name('update');

@@ -172,6 +172,20 @@ class Orden extends Model
     /**
      * Cerrar la orden (convertir en recibo)
      */
+    /** Venta a crédito de este ticket (si fue cobrada a crédito). */
+    public function ventaCredito(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(VentaCredito::class, 'orden_id');
+    }
+
+    /** Excluye los tickets a crédito: su dinero entra a caja solo cuando se cobra. */
+    public function scopeSinCredito($query)
+    {
+        return $query->whereNotExists(fn ($s) => $s->selectRaw('1')
+            ->from('ventas_credito')
+            ->whereColumn('ventas_credito.orden_id', 'ordens.id'));
+    }
+
     public function cerrar(): void
     {
         $this->estado = 'cerrada';

@@ -282,8 +282,8 @@ class ReciboController extends Controller
             // Un turno cerrado conserva sus totales: se recalculan sin esta venta
             $turnoAjustado = false;
             if ($turno && $turno->isCerrado()) {
-                $turno->total_ventas = $turno->ordens()->where('estado', 'cerrada')->sum('total');
-                $turno->numero_ordenes = $turno->ordens()->where('estado', 'cerrada')->count();
+                $turno->total_ventas = $turno->ordens()->where('estado', 'cerrada')->sinCredito()->sum('total');
+                $turno->numero_ordenes = $turno->ordens()->where('estado', 'cerrada')->sinCredito()->count();
                 $turno->save();
                 $turnoAjustado = true;
             }

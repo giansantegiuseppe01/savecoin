@@ -53,10 +53,23 @@ class Cliente extends Model
             ?? $this->ordens()->where('tipo', 'venta')->whereIn('estado', ['cerrada', 'completada'])->sum('total'));
     }
 
-    /** Lo que debe: suma de sus tickets abiertos. */
+    public function ventasCredito(): HasMany
+    {
+        return $this->hasMany(VentaCredito::class);
+    }
+
+    /** Saldo pendiente de sus ventas a crédito. */
+    public function getCreditoPendienteAttribute(): float
+    {
+        return (float) ($this->attributes['credito_pendiente'] ?? $this->ventasCredito()->pendientes()->sum('saldo'));
+    }
+
+    /** Lo que debe: tickets abiertos + saldo de ventas a crédito. */
     public function getDeudaAttribute(): float
     {
-        return (float) ($this->attributes['deuda_sum'] ?? $this->ticketsAbiertos()->sum('total'));
+        $abiertos = (float) ($this->attributes['deuda_sum'] ?? $this->ticketsAbiertos()->sum('total'));
+
+        return $abiertos + $this->getCreditoPendienteAttribute();
     }
 
     public function getTicketsAbiertosCountAttribute(): int

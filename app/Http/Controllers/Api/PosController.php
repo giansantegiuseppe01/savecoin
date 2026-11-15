@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Configuracion;
 use App\Models\DetalleOrden;
 use App\Models\Orden;
+use App\Models\VentaCredito;
 use App\Models\Producto;
 use App\Models\Cliente;
 use App\Models\Turno;
@@ -41,7 +42,7 @@ class PosController extends Controller
                 'cliente_id' => 'nullable|exists:clientes,id',
                 'cliente_nombre' => 'nullable|string|max:255',
                 'estado' => 'nullable|in:abierta,cerrada,anulada',
-                'metodo_pago' => 'nullable|in:efectivo,tarjeta,transferencia,mixto', // Cambiado a nullable
+                'metodo_pago' => 'nullable|in:efectivo,tarjeta,transferencia,mixto,credito', // Cambiado a nullable
                 'turno' => 'nullable|string|in:mañana,tarde,noche', // Cambiado a nullable
                 'descuento' => 'nullable|numeric|min:0',
                 'impuesto' => 'nullable|numeric|min:0',
@@ -81,6 +82,14 @@ class PosController extends Controller
 
             // Obtener estado de la orden
             $estado = $validated['estado'] ?? 'abierta';
+
+            // Crédito: el ticket se cierra, descuenta inventario y la deuda queda a nombre del cliente
+            $esCredito = ($validated['metodo_pago'] ?? null) === 'credito';
+            if ($esCredito && $estado !== 'cerrada') {
+                throw ValidationException::withMessages([
+                    'metodo_pago' => 'La venta a crédito solo se puede cerrar como ticket cerrado.',
+                ]);
+            }
 
             // Calcular totales
             $subtotal = 0;
@@ -134,7 +143,7 @@ class PosController extends Controller
                 'costo_insumos' => $costoInsumosTotal,
                 'beneficio_bruto' => $beneficioBruto,
                 'estado' => $estado,
-                'metodo_pago' => $validated['metodo_pago'] ?? null, // Solo asignar si se proporciona
+                'metodo_pago' => $esCredito ? null : ($validated['metodo_pago'] ?? null), // El crédito se guarda en ventas_credito
                 'turno' => null, // No usar este campo, usar turno_id
                 'fecha_hora' => now(),
                 'notas' => $validated['notas'] ?? null,
@@ -146,6 +155,10 @@ class PosController extends Controller
             // Generar numero_recibo basado en el ID serial
             $orden->numero_recibo = 'ORD-'.$orden->id;
             $orden->save();
+
+            if ($esCredito) {
+                VentaCredito::registrarDesde($orden);
+            }
 
             // Crear detalles solo si existen
             if (! empty($validated['detalles'])) {
@@ -280,7 +293,7 @@ class PosController extends Controller
 
             $validated = $request->validate([
                 'estado' => 'required|in:abierta,cerrada,anulada',
-                'metodo_pago' => 'nullable|in:efectivo,tarjeta,transferencia,mixto',
+                'metodo_pago' => 'nullable|in:efectivo,tarjeta,transferencia,mixto,credito',
                 // Una transferencia no se puede cerrar sin su referencia bancaria
                 'referencia_pago' => [
                     'nullable', 'string', 'max:100',
@@ -313,8 +326,14 @@ class PosController extends Controller
 
             // Actualizar campos básicos
             $orden->estado = $validated['estado'];
+            $esCredito = ($validated['metodo_pago'] ?? null) === 'credito';
+            if ($esCredito && $validated['estado'] !== 'cerrada') {
+                throw ValidationException::withMessages([
+                    'metodo_pago' => 'La venta a crédito solo se puede cerrar como ticket cerrado.',
+                ]);
+            }
             if (isset($validated['metodo_pago'])) {
-                $orden->metodo_pago = $validated['metodo_pago'];
+                $orden->metodo_pago = $esCredito ? null : $validated['metodo_pago'];
             }
             if (array_key_exists('referencia_pago', $validated)) {
                 $orden->referencia_pago = $validated['referencia_pago'];
@@ -390,6 +409,10 @@ class PosController extends Controller
             Log::info('Guardando orden', ['orden_id' => $orden->id, 'estado' => $orden->estado]);
             $orden->save();
             Log::info('Orden guardada exitosamente', ['orden_id' => $orden->id]);
+
+            if ($esCredito) {
+                VentaCredito::registrarDesde($orden);
+            }
 
             // Generar numero_recibo basado en el ID serial si está vacío
             if (empty($orden->numero_recibo)) {

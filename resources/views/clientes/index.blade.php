@@ -125,6 +125,15 @@
                                         @else
                                             <span class="text-muted">—</span>
                                         @endif
+                                        @if($cliente->credito_pendiente > 0)
+                                            <div class="small mt-1">
+                                                <span class="badge bg-warning text-dark">Crédito: ${{ number_format($cliente->credito_pendiente, 2) }}</span>
+                                                <button type="button" class="btn btn-sm btn-outline-success ms-1"
+                                                        onclick="abrirCobro({{ $cliente->id }}, @js($cliente->nombre_completo), {{ $cliente->credito_pendiente }})">
+                                                    <i class="bi bi-cash-coin me-1"></i>Cobrar
+                                                </button>
+                                            </div>
+                                        @endif
                                     </td>
                                     <td class="text-center">
                                         <div class="btn-group" role="group">
@@ -275,6 +284,45 @@
         </div>
     </div>
 </div>
+<!-- Cobro de deuda a crédito -->
+<div class="modal fade" id="cobroModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="bi bi-cash-coin me-2"></i>Cobrar crédito: <span id="cobroCliente"></span></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="formCobro">
+                <div class="modal-body">
+                    <p class="mb-3">Debe a crédito: <strong id="cobroSaldo"></strong></p>
+                    <div class="mb-3">
+                        <label class="form-label">Monto a cobrar (USD) *</label>
+                        <input type="number" name="monto" id="cobroMonto" class="form-control" step="0.01" min="0.01" required>
+                        <small class="text-muted">Se aplica primero a los tickets a crédito más antiguos.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Forma de pago *</label>
+                        <select name="forma_pago" class="form-select" required>
+                            <option value="efectivo">Efectivo</option>
+                            <option value="tarjeta">Tarjeta</option>
+                            <option value="transferencia">Transferencia</option>
+                            <option value="pago_movil">Pago móvil</option>
+                        </select>
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label">Referencia</label>
+                        <input type="text" name="referencia" class="form-control" maxlength="100" placeholder="Opcional">
+                    </div>
+                    <div id="cobroError" class="alert alert-danger mt-3 d-none"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-check2 me-1"></i>Registrar cobro</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 @endsection
 
 @push('scripts')
@@ -309,6 +357,48 @@ function abrirModalEditar(id, nombre, apellido, cedula, telefono, correo) {
     const modal = new bootstrap.Modal(document.getElementById('editarClienteModal'));
     modal.show();
 }
+
+function abrirCobro(id, nombre, saldo) {
+    const form = document.getElementById('formCobro');
+    form.dataset.url = `{{ url('clientes') }}/${id}/abonos`;
+    form.reset();
+    document.getElementById('cobroCliente').textContent = nombre;
+    document.getElementById('cobroSaldo').textContent = '$' + Number(saldo).toFixed(2);
+    document.getElementById('cobroMonto').max = saldo;
+    document.getElementById('cobroMonto').value = Number(saldo).toFixed(2);
+    document.getElementById('cobroError').classList.add('d-none');
+    new bootstrap.Modal(document.getElementById('cobroModal')).show();
+}
+
+document.getElementById('formCobro').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const form = this;
+    const errorBox = document.getElementById('cobroError');
+    errorBox.classList.add('d-none');
+
+    fetch(form.dataset.url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(Object.fromEntries(new FormData(form).entries())),
+    })
+    .then(r => r.json().then(d => ({ok: r.ok, d})))
+    .then(({ok, d}) => {
+        if (ok) {
+            location.reload();
+        } else {
+            errorBox.textContent = d.message || 'No se pudo registrar el cobro.';
+            errorBox.classList.remove('d-none');
+        }
+    })
+    .catch(err => {
+        errorBox.textContent = 'Error de conexión: ' + err.message;
+        errorBox.classList.remove('d-none');
+    });
+});
 
 function eliminarCliente(id, nombre) {
     if (confirm(`¿Está seguro de eliminar el cliente "${nombre}"? Esta acción no se puede deshacer.`)) {
